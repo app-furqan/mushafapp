@@ -32,7 +32,7 @@ class QuranApiService {
     final layoutFuture = _layoutService.getPageLayout(pageNumber);
     final uri = Uri.parse(
       '$_baseUrl/verses/by_page/$pageNumber'
-      '?words=true&word_fields=text_qpc_hafs,code_v2',
+      '?words=true&word_fields=text_qpc_hafs,code_v2&per_page=50',
     );
     final response = await http.get(uri);
     if (response.statusCode != 200) {
