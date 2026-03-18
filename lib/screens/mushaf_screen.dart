@@ -32,6 +32,8 @@ class _MushafScreenState extends State<MushafScreen> {
   int _currentPage = _initialPage;
   bool _showBottomBar = true;
   MushafDisplayMode _displayMode = MushafDisplayMode.light;
+  bool _tajweedEnabled = true;
+  final _zoomNotifier = ValueNotifier<double>(1.0);
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _MushafScreenState extends State<MushafScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _zoomNotifier.dispose();
     super.dispose();
   }
 
@@ -104,6 +107,7 @@ class _MushafScreenState extends State<MushafScreen> {
 
   void _onPageChanged(int index) {
     final pageNumber = index + 1;
+    _zoomNotifier.value = 1.0;
     setState(() => _currentPage = pageNumber);
     for (final p in [pageNumber - 1, pageNumber, pageNumber + 1]) {
       _loadPageData(p);
@@ -138,14 +142,18 @@ class _MushafScreenState extends State<MushafScreen> {
                   _loadPageData(pageNumber);
                   _loadPageFont(pageNumber);
                 });
-                return ColoredBox(
-                  color: _displayMode.scaffoldColor,
-                  child: MushafPageWidget(
-                    pageNumber: pageNumber,
-                    pageData: _dataReady[pageNumber],
-                    chaptersById: _chaptersById,
-                    fontLoaded: _fontReady[pageNumber] ?? false,
-                    displayMode: _displayMode,
+                return _ZoomablePage(
+                  zoomNotifier: _zoomNotifier,
+                  child: ColoredBox(
+                    color: _displayMode.scaffoldColor,
+                    child: MushafPageWidget(
+                      pageNumber: pageNumber,
+                      pageData: _dataReady[pageNumber],
+                      chaptersById: _chaptersById,
+                      fontLoaded: _fontReady[pageNumber] ?? false,
+                      displayMode: _displayMode,
+                      showTajweed: _tajweedEnabled,
+                    ),
                   ),
                 );
               },
@@ -231,10 +239,131 @@ class _MushafScreenState extends State<MushafScreen> {
                 ),
               ),
               const SizedBox(width: 4),
+              ValueListenableBuilder<double>(
+                valueListenable: _zoomNotifier,
+                builder:
+                    (_, zoom, __) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.zoom_out),
+                          tooltip: 'Zoom out',
+                          onPressed:
+                              zoom > 1.05
+                                  ? () =>
+                                      _zoomNotifier.value = (zoom / 1.25).clamp(
+                                        1.0,
+                                        4.0,
+                                      )
+                                  : null,
+                          color: textColor,
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.zoom_in),
+                          tooltip: 'Zoom in',
+                          onPressed:
+                              zoom < 3.95
+                                  ? () =>
+                                      _zoomNotifier.value = (zoom * 1.25).clamp(
+                                        1.0,
+                                        4.0,
+                                      )
+                                  : null,
+                          color: textColor,
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.colorize),
+                tooltip: _tajweedEnabled ? 'Tajweed on' : 'Tajweed off',
+                onPressed:
+                    () => setState(() => _tajweedEnabled = !_tajweedEnabled),
+                color:
+                    _tajweedEnabled
+                        ? const Color(0xFF1B7340)
+                        : textColor.withValues(alpha: 0.45),
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.format_list_bulleted),
+                tooltip: 'Go to Surah',
+                onPressed: () => _showSurahListDialog(context),
+                color: textColor,
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  void _showSurahListDialog(BuildContext context) {
+    if (_chaptersById.isEmpty) return;
+    final chapters =
+        _chaptersById.values.toList()..sort((a, b) => a.id.compareTo(b.id));
+    showDialog<void>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Go to Surah'),
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            content: SizedBox(
+              width: 360,
+              height: 440,
+              child: ListView.builder(
+                itemCount: chapters.length,
+                itemBuilder: (_, i) {
+                  final ch = chapters[i];
+                  return ListTile(
+                    dense: true,
+                    leading: SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${ch.id}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    title: Text(
+                      ch.nameArabic,
+                      textDirection: TextDirection.rtl,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    trailing: Text(
+                      'p. ${ch.startPage}',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    onTap: () {
+                      _jumpToPage(ch.startPage);
+                      Navigator.pop(ctx);
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
     );
   }
 
@@ -269,6 +398,66 @@ class _MushafScreenState extends State<MushafScreen> {
               ),
             ],
           ),
+    );
+  }
+}
+
+class _ZoomablePage extends StatefulWidget {
+  final Widget child;
+  final ValueNotifier<double> zoomNotifier;
+
+  const _ZoomablePage({required this.child, required this.zoomNotifier});
+
+  @override
+  State<_ZoomablePage> createState() => _ZoomablePageState();
+}
+
+class _ZoomablePageState extends State<_ZoomablePage> {
+  late final TransformationController _controller;
+  bool _isZoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TransformationController();
+    _controller.addListener(_onTransformChanged);
+    widget.zoomNotifier.addListener(_onZoomChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onTransformChanged);
+    widget.zoomNotifier.removeListener(_onZoomChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTransformChanged() {
+    final scale = _controller.value.getMaxScaleOnAxis();
+    final zoomed = scale > 1.05;
+    if (zoomed != _isZoomed) setState(() => _isZoomed = zoomed);
+    if ((scale - widget.zoomNotifier.value).abs() > 0.05) {
+      widget.zoomNotifier.value = scale;
+    }
+  }
+
+  void _onZoomChanged() {
+    final scale = widget.zoomNotifier.value;
+    if ((scale - _controller.value.getMaxScaleOnAxis()).abs() < 0.05) return;
+    _controller.value =
+        _controller.value.clone()
+          ..setIdentity()
+          ..scaleByDouble(scale, scale, 1.0, 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InteractiveViewer(
+      transformationController: _controller,
+      minScale: 1.0,
+      maxScale: 4.0,
+      panEnabled: _isZoomed,
+      child: widget.child,
     );
   }
 }

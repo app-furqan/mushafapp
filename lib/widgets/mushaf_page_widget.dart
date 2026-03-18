@@ -11,6 +11,7 @@ class MushafPageWidget extends StatelessWidget {
   final Map<int, ChapterModel> chaptersById;
   final bool fontLoaded;
   final MushafDisplayMode displayMode;
+  final bool showTajweed;
 
   const MushafPageWidget({
     super.key,
@@ -19,6 +20,7 @@ class MushafPageWidget extends StatelessWidget {
     required this.chaptersById,
     required this.fontLoaded,
     required this.displayMode,
+    this.showTajweed = true,
   });
 
   @override
@@ -27,57 +29,53 @@ class MushafPageWidget extends StatelessWidget {
     final borderColor = displayMode.borderColor;
     final textColor = displayMode.textColor;
 
-    return Center(
-      child: AspectRatio(
-        aspectRatio: 0.65,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: pageColor,
+        border: Border.all(color: borderColor, width: 1.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
         child: Container(
-          margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: pageColor,
-            border: Border.all(color: borderColor, width: 1.15),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(3),
-            child: Container(
-              decoration: BoxDecoration(
-                color: pageColor,
-                border: Border.all(
-                  color: borderColor.withValues(alpha: 0.72),
-                  width: 0.75,
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child:
-                          pageData == null
-                              ? _LoadingLines(textColor: textColor)
-                              : _PageLines(
-                                pageNumber: pageNumber,
-                                pageData: pageData!,
-                                chaptersById: chaptersById,
-                                fontLoaded: fontLoaded,
-                                textColor: textColor,
-                                borderColor: borderColor,
-                              ),
-                    ),
-                  ),
-                  _PageNumberDivider(
-                    pageNumber: pageNumber,
-                    textColor: textColor,
-                    borderColor: borderColor,
-                    pageColor: pageColor,
-                  ),
-                ],
-              ),
+            border: Border.all(
+              color: borderColor.withValues(alpha: 0.72),
+              width: 0.75,
             ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child:
+                      pageData == null
+                          ? _LoadingLines(textColor: textColor)
+                          : _PageLines(
+                            pageNumber: pageNumber,
+                            pageData: pageData!,
+                            chaptersById: chaptersById,
+                            fontLoaded: fontLoaded,
+                            textColor: textColor,
+                            borderColor: borderColor,
+                            showTajweed: showTajweed,
+                          ),
+                ),
+              ),
+              _PageNumberDivider(
+                pageNumber: pageNumber,
+                textColor: textColor,
+                borderColor: borderColor,
+                pageColor: pageColor,
+              ),
+            ],
           ),
         ),
       ),
@@ -114,6 +112,7 @@ class _PageLines extends StatelessWidget {
   final bool fontLoaded;
   final Color textColor;
   final Color borderColor;
+  final bool showTajweed;
 
   const _PageLines({
     required this.pageNumber,
@@ -122,6 +121,7 @@ class _PageLines extends StatelessWidget {
     required this.fontLoaded,
     required this.textColor,
     required this.borderColor,
+    required this.showTajweed,
   });
 
   @override
@@ -174,6 +174,7 @@ class _PageLines extends StatelessWidget {
         textColor: textColor,
         fontFamily: fontFamily,
         fontLoaded: fontLoaded,
+        showTajweed: showTajweed,
       ),
     };
   }
@@ -445,12 +446,14 @@ class _LineContent extends StatelessWidget {
   final Color textColor;
   final String fontFamily;
   final bool fontLoaded;
+  final bool showTajweed;
 
   const _LineContent({
     required this.lineData,
     required this.textColor,
     required this.fontFamily,
     required this.fontLoaded,
+    required this.showTajweed,
   });
 
   @override
@@ -491,7 +494,7 @@ class _LineContent extends StatelessWidget {
       ],
     );
 
-    return LayoutBuilder(
+    final layoutResult = LayoutBuilder(
       builder: (context, constraints) {
         final wordWidths = [
           for (final word in lineData.words)
@@ -553,6 +556,34 @@ class _LineContent extends StatelessWidget {
         );
       },
     );
+    if (!showTajweed) {
+      return ColorFiltered(
+        colorFilter: ColorFilter.matrix(<double>[
+          0,
+          0,
+          0,
+          0,
+          (textColor.r * 255.0).roundToDouble() / 255.0,
+          0,
+          0,
+          0,
+          0,
+          (textColor.g * 255.0).roundToDouble() / 255.0,
+          0,
+          0,
+          0,
+          0,
+          (textColor.b * 255.0).roundToDouble() / 255.0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]),
+        child: layoutResult,
+      );
+    }
+    return layoutResult;
   }
 
   double _measureWordWidth(BuildContext context, String text, TextStyle style) {

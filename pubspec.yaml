@@ -9,7 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.2.0
+  sqflite: ^2.3.3
+  sqflite_common_ffi: ^2.3.4
+  path_provider: ^2.1.4
+  path: ^1.9.0
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
@@ -22,6 +25,7 @@ flutter:
 
   assets:
     - assets/fonts/v4/
+    - assets/data/
 
   fonts:
     - family: QCF4Surah
