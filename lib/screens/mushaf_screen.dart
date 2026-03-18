@@ -143,12 +143,14 @@ class _MushafScreenState extends State<MushafScreen> {
                     horizontal: 4,
                     vertical: 8,
                   ),
-                  child: MushafPageWidget(
-                    pageNumber: pageNumber,
-                    pageData: _dataReady[pageNumber],
-                    chaptersById: _chaptersById,
-                    fontLoaded: _fontReady[pageNumber] ?? false,
-                    displayMode: _displayMode,
+                  child: ClipRect(
+                    child: MushafPageWidget(
+                      pageNumber: pageNumber,
+                      pageData: _dataReady[pageNumber],
+                      chaptersById: _chaptersById,
+                      fontLoaded: _fontReady[pageNumber] ?? false,
+                      displayMode: _displayMode,
+                    ),
                   ),
                 );
               },

@@ -27,8 +27,7 @@ class MushafPageWidget extends StatelessWidget {
     final borderColor = displayMode.borderColor;
     final textColor = displayMode.textColor;
 
-    return Container(
-      color: pageColor,
+    return Center(
       child: AspectRatio(
         aspectRatio: 0.65,
         child: Container(
@@ -128,38 +127,77 @@ class _PageLines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fontFamily = FontService.fontFamilyForPage(pageNumber);
+    final lineSlots = List<LineData?>.generate(
+      PageData.totalLines,
+      (slotIndex) => pageData.lineFor(slotIndex + 1),
+    );
+    final centeredAyahCount =
+        pageData.lines
+            .where(
+              (line) => line.lineType == PageLineType.ayah && line.isCentered,
+            )
+            .length;
+    final hasTrailingBlanks = lineSlots.any((line) => line == null);
+    final useCenteredProfile = centeredAyahCount >= 4 || hasTrailingBlanks;
 
     return Column(
-      children: List.generate(PageData.totalLines, (slotIndex) {
-        final lineNumber = slotIndex + 1;
-        final lineData = pageData.lineFor(lineNumber);
-        if (lineData == null) {
-          return const Expanded(child: SizedBox.shrink());
-        }
-
-        final chapter =
-            lineData.surahNumber == null
-                ? null
-                : chaptersById[lineData.surahNumber!];
-
-        return Expanded(
-          child: switch (lineData.lineType) {
-            PageLineType.surahName => _SurahNameBox(
-              borderColor: borderColor,
-              textColor: textColor,
-              title: chapter?.nameArabic ?? '',
-            ),
-            PageLineType.basmallah => _BismillahLine(textColor: textColor),
-            PageLineType.ayah => _LineContent(
-              lineData: lineData,
-              textColor: textColor,
-              fontFamily: fontFamily,
-              fontLoaded: fontLoaded,
-            ),
-          },
-        );
-      }),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final lineData in lineSlots)
+          Flexible(
+            flex: _lineFlex(lineData, useCenteredProfile),
+            child: _buildLine(lineData, fontFamily),
+          ),
+      ],
     );
+  }
+
+  Widget _buildLine(LineData? lineData, String fontFamily) {
+    if (lineData == null) {
+      return const SizedBox.shrink();
+    }
+
+    final chapter =
+        lineData.surahNumber == null
+            ? null
+            : chaptersById[lineData.surahNumber!];
+
+    return switch (lineData.lineType) {
+      PageLineType.surahName => _SurahNameBox(
+        borderColor: borderColor,
+        textColor: textColor,
+        title: chapter?.nameArabic ?? '',
+      ),
+      PageLineType.basmallah => _BismillahLine(textColor: textColor),
+      PageLineType.ayah => _LineContent(
+        lineData: lineData,
+        textColor: textColor,
+        fontFamily: fontFamily,
+        fontLoaded: fontLoaded,
+      ),
+    };
+  }
+
+  int _lineFlex(LineData? lineData, bool useCenteredProfile) {
+    if (lineData == null) {
+      return useCenteredProfile ? 22 : 14;
+    }
+
+    if (useCenteredProfile) {
+      return switch (lineData.lineType) {
+        PageLineType.surahName => 6,
+        PageLineType.basmallah => 7,
+        PageLineType.ayah when lineData.isCentered => 8,
+        PageLineType.ayah => 11,
+      };
+    }
+
+    return switch (lineData.lineType) {
+      PageLineType.surahName => 7,
+      PageLineType.basmallah => 8,
+      PageLineType.ayah when lineData.isCentered => 9,
+      PageLineType.ayah => 12,
+    };
   }
 }
 
@@ -236,53 +274,137 @@ class _SurahNameBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 2),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
         border: Border.all(
-          color: borderColor.withValues(alpha: 0.82),
-          width: 1,
+          color: borderColor.withValues(alpha: 0.8),
+          width: 0.95,
         ),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(
-            color: borderColor.withValues(alpha: 0.48),
-            width: 0.75,
+            color: borderColor.withValues(alpha: 0.42),
+            width: 0.65,
           ),
           borderRadius: BorderRadius.circular(3),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Container(
-                height: 1,
-                color: borderColor.withValues(alpha: 0.34),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Text(
-                'سورة $title',
-                textDirection: TextDirection.rtl,
-                style: TextStyle(
-                  fontFamily: FontService.uthmanicHafsFamily,
-                  fontFamilyFallback: const [FontService.surahFontFamily],
-                  fontSize: 17,
-                  color: textColor,
-                  height: 1,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          child: Row(
+            children: [
+              _HeaderEndCap(borderColor: borderColor),
+              const SizedBox(width: 6),
+              Expanded(child: _HeaderRule(borderColor: borderColor)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: _HeaderTitleCartouche(
+                  borderColor: borderColor,
+                  textColor: textColor,
+                  title: title,
                 ),
-                textAlign: TextAlign.center,
               ),
-            ),
-            Expanded(
-              child: Container(
-                height: 1,
-                color: borderColor.withValues(alpha: 0.34),
-              ),
-            ),
-          ],
+              Expanded(child: _HeaderRule(borderColor: borderColor)),
+              const SizedBox(width: 6),
+              _HeaderEndCap(borderColor: borderColor),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeaderRule extends StatelessWidget {
+  final Color borderColor;
+
+  const _HeaderRule({required this.borderColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(height: 0.8, color: borderColor.withValues(alpha: 0.28)),
+        const SizedBox(height: 2),
+        Container(height: 0.8, color: borderColor.withValues(alpha: 0.42)),
+      ],
+    );
+  }
+}
+
+class _HeaderEndCap extends StatelessWidget {
+  final Color borderColor;
+
+  const _HeaderEndCap({required this.borderColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 16,
+      child: Row(
+        children: [
+          Transform.rotate(
+            angle: 0.78,
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: borderColor.withValues(alpha: 0.62),
+                  width: 0.7,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Container(
+              height: 0.8,
+              color: borderColor.withValues(alpha: 0.32),
+            ),
+          ),
+          const SizedBox(width: 2),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderTitleCartouche extends StatelessWidget {
+  final Color borderColor;
+  final Color textColor;
+  final String title;
+
+  const _HeaderTitleCartouche({
+    required this.borderColor,
+    required this.textColor,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: borderColor.withValues(alpha: 0.46),
+          width: 0.7,
+        ),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        title,
+        textDirection: TextDirection.rtl,
+        style: TextStyle(
+          fontFamily: FontService.uthmanicHafsFamily,
+          fontFamilyFallback: const [FontService.surahFontFamily],
+          fontSize: 15.8,
+          color: textColor,
+          height: 1,
+        ),
+        textAlign: TextAlign.center,
       ),
     );
   }
