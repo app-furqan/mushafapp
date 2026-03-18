@@ -77,10 +77,6 @@ class PageData {
     }
 
     final wordsById = {for (final word in words) word.id: word};
-    final wordsByLine = <int, List<WordModel>>{};
-    for (final word in words) {
-      wordsByLine.putIfAbsent(word.lineNumber, () => []).add(word);
-    }
 
     final lines =
         layoutLines.map((layoutLine) {
@@ -94,11 +90,7 @@ class PageData {
               lineType: layoutLine.lineType,
               isCentered: layoutLine.isCentered,
               surahNumber: layoutLine.surahNumber,
-              words:
-                  matchedWords.isNotEmpty ||
-                          layoutLine.lineType != PageLineType.ayah
-                      ? matchedWords
-                      : (wordsByLine[layoutLine.lineNumber] ?? const []),
+              words: matchedWords,
             );
           }).toList()
           ..sort((a, b) => a.lineNumber.compareTo(b.lineNumber));

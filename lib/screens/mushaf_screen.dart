@@ -138,19 +138,14 @@ class _MushafScreenState extends State<MushafScreen> {
                   _loadPageData(pageNumber);
                   _loadPageFont(pageNumber);
                 });
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 8,
-                  ),
-                  child: ClipRect(
-                    child: MushafPageWidget(
-                      pageNumber: pageNumber,
-                      pageData: _dataReady[pageNumber],
-                      chaptersById: _chaptersById,
-                      fontLoaded: _fontReady[pageNumber] ?? false,
-                      displayMode: _displayMode,
-                    ),
+                return ColoredBox(
+                  color: _displayMode.scaffoldColor,
+                  child: MushafPageWidget(
+                    pageNumber: pageNumber,
+                    pageData: _dataReady[pageNumber],
+                    chaptersById: _chaptersById,
+                    fontLoaded: _fontReady[pageNumber] ?? false,
+                    displayMode: _displayMode,
                   ),
                 );
               },
