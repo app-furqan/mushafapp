@@ -8,7 +8,7 @@ import '../services/font_service.dart';
 class MushafPageWidget extends StatelessWidget {
   final int pageNumber;
   final PageData? pageData; // null while loading
-  final ChapterModel? chapterStart;
+  final Map<int, ChapterModel> chaptersById;
   final bool fontLoaded;
   final MushafDisplayMode displayMode;
 
@@ -16,12 +16,10 @@ class MushafPageWidget extends StatelessWidget {
     super.key,
     required this.pageNumber,
     required this.pageData,
-    required this.chapterStart,
+    required this.chaptersById,
     required this.fontLoaded,
     required this.displayMode,
   });
-
-  static const int _linesPerPage = 15;
 
   @override
   Widget build(BuildContext context) {
@@ -37,52 +35,55 @@ class MushafPageWidget extends StatelessWidget {
           margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: pageColor,
-            border: Border.all(color: borderColor, width: 1.5),
+            border: Border.all(color: borderColor, width: 1.15),
+            borderRadius: BorderRadius.circular(6),
           ),
-          child: Column(
-            children: [
-              _BorderBar(color: borderColor),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Container(
+              decoration: BoxDecoration(
+                color: pageColor,
+                border: Border.all(
+                  color: borderColor.withValues(alpha: 0.72),
+                  width: 0.75,
+                ),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child:
+                          pageData == null
+                              ? _LoadingLines(textColor: textColor)
+                              : _PageLines(
+                                pageNumber: pageNumber,
+                                pageData: pageData!,
+                                chaptersById: chaptersById,
+                                fontLoaded: fontLoaded,
+                                textColor: textColor,
+                                borderColor: borderColor,
+                              ),
+                    ),
                   ),
-                  child:
-                      pageData == null
-                          ? _LoadingLines(textColor: textColor)
-                          : _PageLines(
-                            pageNumber: pageNumber,
-                            pageData: pageData!,
-                            chapterStart: chapterStart,
-                            fontLoaded: fontLoaded,
-                            textColor: textColor,
-                            borderColor: borderColor,
-                          ),
-                ),
+                  _PageNumberDivider(
+                    pageNumber: pageNumber,
+                    textColor: textColor,
+                    borderColor: borderColor,
+                    pageColor: pageColor,
+                  ),
+                ],
               ),
-              _BorderBar(color: borderColor),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '$pageNumber',
-                  style: TextStyle(color: textColor, fontSize: 11),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class _BorderBar extends StatelessWidget {
-  final Color color;
-  const _BorderBar({required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(height: 3, color: color);
 }
 
 class _LoadingLines extends StatelessWidget {
@@ -92,7 +93,7 @@ class _LoadingLines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: List.generate(MushafPageWidget._linesPerPage, (_) {
+      children: List.generate(PageData.totalLines, (_) {
         return Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
@@ -110,7 +111,7 @@ class _LoadingLines extends StatelessWidget {
 class _PageLines extends StatelessWidget {
   final int pageNumber;
   final PageData pageData;
-  final ChapterModel? chapterStart;
+  final Map<int, ChapterModel> chaptersById;
   final bool fontLoaded;
   final Color textColor;
   final Color borderColor;
@@ -118,7 +119,7 @@ class _PageLines extends StatelessWidget {
   const _PageLines({
     required this.pageNumber,
     required this.pageData,
-    required this.chapterStart,
+    required this.chaptersById,
     required this.fontLoaded,
     required this.textColor,
     required this.borderColor,
@@ -127,58 +128,95 @@ class _PageLines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fontFamily = FontService.fontFamilyForPage(pageNumber);
-    final lineMap = {for (final l in pageData.lines) l.lineNumber: l};
-    final minLine = pageData.minLine;
-    final headerSlots = minLine - 1;
 
     return Column(
-      children: List.generate(MushafPageWidget._linesPerPage, (slotIndex) {
+      children: List.generate(PageData.totalLines, (slotIndex) {
         final lineNumber = slotIndex + 1;
-
-        // Header area (surah name + bismillah) for pages that start a new surah
-        if (lineNumber <= headerSlots) {
-          return Expanded(child: _headerWidget(lineNumber, headerSlots));
-        }
-
-        final lineData = lineMap[lineNumber];
+        final lineData = pageData.lineFor(lineNumber);
         if (lineData == null) {
           return const Expanded(child: SizedBox.shrink());
         }
 
+        final chapter =
+            lineData.surahNumber == null
+                ? null
+                : chaptersById[lineData.surahNumber!];
+
         return Expanded(
-          child: _LineContent(
-            lineData: lineData,
-            textColor: textColor,
-            fontFamily: fontFamily,
-            fontLoaded: fontLoaded,
-          ),
+          child: switch (lineData.lineType) {
+            PageLineType.surahName => _SurahNameBox(
+              borderColor: borderColor,
+              textColor: textColor,
+              title: chapter?.nameArabic ?? '',
+            ),
+            PageLineType.basmallah => _BismillahLine(textColor: textColor),
+            PageLineType.ayah => _LineContent(
+              lineData: lineData,
+              textColor: textColor,
+              fontFamily: fontFamily,
+              fontLoaded: fontLoaded,
+            ),
+          },
         );
       }),
     );
   }
+}
 
-  Widget _headerWidget(int lineNumber, int totalHeaderSlots) {
-    if (chapterStart == null) {
-      return const SizedBox.shrink();
-    }
+class _PageNumberDivider extends StatelessWidget {
+  final int pageNumber;
+  final Color textColor;
+  final Color borderColor;
+  final Color pageColor;
 
-    if (totalHeaderSlots == 1 && chapterStart!.bismillahPre) {
-      return _BismillahLine(textColor: textColor);
-    }
+  const _PageNumberDivider({
+    required this.pageNumber,
+    required this.textColor,
+    required this.borderColor,
+    required this.pageColor,
+  });
 
-    if (totalHeaderSlots >= 2) {
-      if (lineNumber == 1) {
-        return _SurahNameBox(
-          borderColor: borderColor,
-          textColor: textColor,
-          title: chapterStart!.nameArabic,
-        );
-      }
-      if (lineNumber == 2 && chapterStart!.bismillahPre) {
-        return _BismillahLine(textColor: textColor);
-      }
-    }
-    return const SizedBox.shrink();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 18, right: 18, top: 2, bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 1,
+              color: borderColor.withValues(alpha: 0.52),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: pageColor,
+              border: Border.all(
+                color: borderColor.withValues(alpha: 0.76),
+                width: 0.95,
+              ),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$pageNumber',
+              style: TextStyle(
+                color: textColor,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: borderColor.withValues(alpha: 0.52),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -197,23 +235,54 @@ class _SurahNameBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: borderColor, width: 1.2),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        'سورة $title',
-        textDirection: TextDirection.rtl,
-        style: TextStyle(
-          fontFamily: FontService.uthmanicHafsFamily,
-          fontFamilyFallback: const [FontService.surahFontFamily],
-          fontSize: 18,
-          color: textColor,
-          height: 1.2,
+        border: Border.all(
+          color: borderColor.withValues(alpha: 0.82),
+          width: 1,
         ),
-        textAlign: TextAlign.center,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: borderColor.withValues(alpha: 0.48),
+            width: 0.75,
+          ),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 1,
+                color: borderColor.withValues(alpha: 0.34),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: Text(
+                'سورة $title',
+                textDirection: TextDirection.rtl,
+                style: TextStyle(
+                  fontFamily: FontService.uthmanicHafsFamily,
+                  fontFamilyFallback: const [FontService.surahFontFamily],
+                  fontSize: 17,
+                  color: textColor,
+                  height: 1,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            Expanded(
+              child: Container(
+                height: 1,
+                color: borderColor.withValues(alpha: 0.34),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -231,15 +300,18 @@ class _BismillahLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.center,
-      child: Text(
-        _bismillah,
-        textDirection: TextDirection.rtl,
-        style: TextStyle(
-          fontFamily: FontService.uthmanicHafsFamily,
-          fontFamilyFallback: const [FontService.surahFontFamily],
-          fontSize: 24,
-          color: textColor,
-          height: 1.4,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Text(
+          _bismillah,
+          textDirection: TextDirection.rtl,
+          style: TextStyle(
+            fontFamily: FontService.uthmanicHafsFamily,
+            fontFamilyFallback: const [FontService.surahFontFamily],
+            fontSize: 22,
+            color: textColor,
+            height: 1.05,
+          ),
         ),
       ),
     );
@@ -263,58 +335,111 @@ class _LineContent extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!fontLoaded) {
       return Align(
-        alignment: Alignment.centerRight,
+        alignment:
+            lineData.isCentered ? Alignment.center : Alignment.centerRight,
         child: Directionality(
           textDirection: TextDirection.rtl,
           child: Text(
             lineData.fallbackText,
             textDirection: TextDirection.rtl,
-            textAlign: TextAlign.right,
+            textAlign: lineData.isCentered ? TextAlign.center : TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.clip,
             style: TextStyle(
               fontFamily: FontService.uthmanicHafsFamily,
-              fontSize: 22,
+              fontSize: 21,
               color: textColor,
-              height: 1.45,
+              height: 1.18,
             ),
           ),
         ),
       );
     }
 
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: RichText(
+    final style = TextStyle(
+      fontFamily: fontFamily,
+      fontFamilyFallback: const [FontService.uthmanicHafsFamily],
+      fontSize: 25.5,
+      color: textColor,
+      height: 1.08,
+      fontFeatures: const [
+        FontFeature.enable('liga'),
+        FontFeature.enable('calt'),
+        FontFeature.enable('rlig'),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wordWidths = [
+          for (final word in lineData.words)
+            _measureWordWidth(context, word.glyphText, style),
+        ];
+        final contentWidth = wordWidths.fold<double>(
+          0,
+          (sum, width) => sum + width,
+        );
+        final gapCount =
+            lineData.words.length > 1 ? lineData.words.length - 1 : 1;
+        final availableWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : contentWidth;
+        final freeSpace = (availableWidth - contentWidth).clamp(0.0, 160.0);
+
+        final gapWidth =
+            lineData.isCentered
+                ? 1.5
+                : gapCount == 0
+                ? 0.0
+                : (freeSpace / gapCount).clamp(1.5, 18.0);
+
+        final row = Directionality(
           textDirection: TextDirection.rtl,
-          textAlign: TextAlign.right,
-          maxLines: 1,
-          overflow: TextOverflow.clip,
-          text: TextSpan(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              for (final word in lineData.words)
-                TextSpan(
-                  text: word.glyphText,
-                  style: TextStyle(
-                    fontFamily: fontFamily,
-                    fontFamilyFallback: const [FontService.uthmanicHafsFamily],
-                    fontSize: 27,
-                    color: textColor,
-                    height: 1.45,
-                    fontFeatures: const [
-                      FontFeature.enable('liga'),
-                      FontFeature.enable('calt'),
-                      FontFeature.enable('rlig'),
-                    ],
+              for (var index = 0; index < lineData.words.length; index++) ...[
+                Semantics(
+                  label: lineData.words[index].text,
+                  child: ExcludeSemantics(
+                    child: Text(
+                      lineData.words[index].glyphText,
+                      textDirection: TextDirection.rtl,
+                      style: style,
+                    ),
                   ),
-                  semanticsLabel: word.text,
                 ),
+                if (index < lineData.words.length - 1)
+                  SizedBox(width: gapWidth),
+              ],
             ],
           ),
-        ),
-      ),
+        );
+
+        return Align(
+          alignment:
+              lineData.isCentered ? Alignment.center : Alignment.centerRight,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment:
+                lineData.isCentered ? Alignment.center : Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: availableWidth),
+              child: row,
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  double _measureWordWidth(BuildContext context, String text, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.rtl,
+      maxLines: 1,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width;
   }
 }

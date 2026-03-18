@@ -27,7 +27,7 @@ class _MushafScreenState extends State<MushafScreen> {
   final _dataFutures = <int, Future<PageData>>{};
   final _fontReady = <int, bool>{};
   final _fontFutures = <int, Future<void>>{};
-  Map<int, ChapterModel> _chapterStartsByPage = const {};
+  Map<int, ChapterModel> _chaptersById = const {};
 
   int _currentPage = _initialPage;
   bool _showBottomBar = true;
@@ -46,9 +46,15 @@ class _MushafScreenState extends State<MushafScreen> {
 
   Future<void> _loadChapterMetadata() async {
     try {
-      final chapterMap = await _chapterService.getChapterStartsByPage();
+      final chapters = await _chapterService.getChapters();
+      final chaptersById = <int, ChapterModel>{};
+      for (final chapter in chapters) {
+        chaptersById[chapter.id] = chapter;
+      }
       if (mounted) {
-        setState(() => _chapterStartsByPage = chapterMap);
+        setState(() {
+          _chaptersById = chaptersById;
+        });
       }
     } catch (error) {
       debugPrint('Error loading chapter metadata: $error');
@@ -128,12 +134,10 @@ class _MushafScreenState extends State<MushafScreen> {
               reverse: true,
               itemBuilder: (context, index) {
                 final pageNumber = index + 1;
-                WidgetsBinding.instance.addPostFrameCallback(
-                  (_) {
-                    _loadPageData(pageNumber);
-                    _loadPageFont(pageNumber);
-                  },
-                );
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _loadPageData(pageNumber);
+                  _loadPageFont(pageNumber);
+                });
                 return Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 4,
@@ -142,7 +146,7 @@ class _MushafScreenState extends State<MushafScreen> {
                   child: MushafPageWidget(
                     pageNumber: pageNumber,
                     pageData: _dataReady[pageNumber],
-                    chapterStart: _chapterStartsByPage[pageNumber],
+                    chaptersById: _chaptersById,
                     fontLoaded: _fontReady[pageNumber] ?? false,
                     displayMode: _displayMode,
                   ),
