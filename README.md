@@ -151,5 +151,3 @@ flutter run -d linux --release   # or -d macos / -d android / etc.
 ## Credits
 
 - **King Fahd Complex for the Printing of the Holy Quran** — the Madinah Mushaf
-- **[quran.com](https://quran.com)** — QPC v4 font system and layout databases
-- **[Tarteel](https://tarteel.ai)** — reference mushaf layout implementation
