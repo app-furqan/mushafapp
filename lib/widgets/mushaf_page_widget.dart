@@ -66,6 +66,7 @@ class MushafPageWidget extends StatelessWidget {
                             textColor: textColor,
                             borderColor: borderColor,
                             showTajweed: showTajweed,
+                            displayMode: displayMode,
                           ),
                 ),
               ),
@@ -113,6 +114,7 @@ class _PageLines extends StatelessWidget {
   final Color textColor;
   final Color borderColor;
   final bool showTajweed;
+  final MushafDisplayMode displayMode;
 
   const _PageLines({
     required this.pageNumber,
@@ -122,11 +124,16 @@ class _PageLines extends StatelessWidget {
     required this.textColor,
     required this.borderColor,
     required this.showTajweed,
+    required this.displayMode,
   });
 
   @override
   Widget build(BuildContext context) {
-    final fontFamily = FontService.fontFamilyForPage(pageNumber);
+    final isDark = displayMode.brightness == Brightness.dark;
+    final fontFamily = FontService.fontFamilyForPage(
+      pageNumber,
+      dark: isDark && showTajweed,
+    );
     final lineSlots = List<LineData?>.generate(
       PageData.totalLines,
       (slotIndex) => pageData.lineFor(slotIndex + 1),
@@ -162,15 +169,11 @@ class _PageLines extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final chapter =
-        lineData.surahNumber == null
-            ? null
-            : chaptersById[lineData.surahNumber!];
-
     return switch (lineData.lineType) {
       PageLineType.surahName => _SurahNameBox(
         textColor: textColor,
-        title: chapter?.nameArabic ?? '',
+        borderColor: borderColor,
+        surahNumber: lineData.surahNumber ?? 1,
       ),
       PageLineType.basmallah => _BismillahLine(textColor: textColor),
       PageLineType.ayah => _LineContent(
@@ -263,118 +266,63 @@ class _PageNumberDivider extends StatelessWidget {
   }
 }
 
-/// Decorative surah name header box.
+/// Decorative surah name banner.
 ///
-/// The U+0600 glyph in UthmanicHafs v20 has zero advance-width, so Flutter's
-/// normal text layout gives it no size.  We use [LayoutBuilder] to get the
-/// available width, compute a precise scale factor from the glyph's ink-bounds
-/// (measured from the font file), and apply [Transform.scale] /
-/// [Transform.translate] so the frame fills the page width exactly.
+/// Renders the per-surah glyph from QCF4Surah (U+F100 + surahNumber − 1)
+/// centred inside a decorative double-border frame.  The glyph is sized with
+/// [FittedBox.scaleDown] so it never overflows.
 class _SurahNameBox extends StatelessWidget {
   final Color textColor;
-  final String title;
+  final Color borderColor;
+  final int surahNumber;
 
-  const _SurahNameBox({required this.textColor, required this.title});
-
-  // U+0600 — decorative surah-name frame glyph in UthmanicHafs v20.
-  static const _frameGlyph = '\u0600';
-
-  // ── Font metrics (UthmanicHafs v20, UPM = 2048) ─────────────────────────
-  // Glyph U+0600: xMin = -13129, xMax = 23158, yMin = -1180, yMax = 2334
-  // hhea: ascent = 2400, |descent| = 1200
-  static const double _upm = 2048;
-
-  // Reference font size used for the base measurement.
-  static const double _refSize = 38.0;
-
-  // At _refSize, glyph ink-box dimensions in logical pixels.
-  static const double _refW = 36287.0 / _upm * _refSize; // ≈ 673.29 px
-  static const double _refH = 3514.0 / _upm * _refSize; // ≈  65.20 px
-
-  // x-translation: shift the text origin right so the glyph's left ink-edge
-  // lands at x = 0 within our container.
-  //   origin_offset = |xMin| / upm * refSize = 13129 / 2048 * 38 ≈ 243.60
-  static const double _refXOff = 13129.0 / _upm * _refSize;
-
-  // y-translation: shift the text origin up so the glyph's top ink-edge
-  // lands at y = 0 within our container.
-  //   With height = (ascent + |descent|) / upm the baseline sits at
-  //   ascent / upm * refSize ≈ 44.53 px from the text-box top.
-  //   The glyph's top ink-edge is at baseline − yMax/upm*refSize ≈ 1.22 px
-  //   from the text-box top, so shift by −1.22.
-  static const double _refYOff =
-      -(2400.0 - 2334.0) / _upm * _refSize; // ≈ −1.22
-
-  // Natural line-height ratio so that Flutter places the baseline where the
-  // font metrics expect it:  (ascent + |descent|) / upm = 3600 / 2048.
-  static const double _lineH = (2400.0 + 1200.0) / _upm; // ≈ 1.758
-  // ────────────────────────────────────────────────────────────────────────
+  const _SurahNameBox({
+    required this.textColor,
+    required this.borderColor,
+    required this.surahNumber,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // Bottom margin keeps a clear gap before the bismillah line.
-      margin: const EdgeInsets.fromLTRB(0, 2, 0, 8),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final availW = constraints.maxWidth;
-          // Scale the ref rendering so the glyph ink-width == availW.
-          final scale = availW / _refW;
-          // The container height follows from the glyph's aspect ratio.
-          final displayH = _refH * scale;
-          // Name font scales with the frame height; clamped for readability.
-          final nameFontSize = (displayH * 0.38).clamp(12.0, 24.0);
+    final n = surahNumber.clamp(1, 114);
+    final glyph = String.fromCharCode(0xF100 + n - 1);
 
-          return SizedBox(
-            width: availW,
-            height: displayH,
-            child: Stack(
-              children: [
-                // ── Frame glyph ──────────────────────────────────────────────
-                // ClipRect prevents the zero-advance glyph from bleeding
-                // outside the SizedBox boundaries.
-                ClipRect(
-                  child: Transform.scale(
-                    scale: scale,
-                    alignment: Alignment.topLeft,
-                    child: Transform.translate(
-                      // Move the text origin so the glyph's ink top-left = (0, 0)
-                      // in the pre-scale (ref) coordinate space.
-                      offset: const Offset(_refXOff, _refYOff),
-                      child: Text(
-                        _frameGlyph,
-                        // LTR keeps the glyph coordinate maths consistent with
-                        // the font's own left-to-right ink bounds.
-                        textDirection: TextDirection.ltr,
-                        style: TextStyle(
-                          fontFamily: FontService.uthmanicHafsFamily,
-                          fontSize: _refSize,
-                          color: textColor,
-                          height: _lineH,
-                        ),
-                      ),
-                    ),
-                  ),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: borderColor.withValues(alpha: 0.8),
+          width: 0.95,
+        ),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: borderColor.withValues(alpha: 0.42),
+            width: 0.65,
+          ),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: Text(
+                glyph,
+                textDirection: TextDirection.rtl,
+                style: TextStyle(
+                  fontFamily: FontService.surahFontFamily,
+                  fontSize: 48,
+                  color: textColor,
+                  height: 1.3,
                 ),
-                // ── Surah name ───────────────────────────────────────────────
-                Center(
-                  child: Text(
-                    title,
-                    textDirection: TextDirection.rtl,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: FontService.uthmanicHafsFamily,
-                      fontFamilyFallback: const [FontService.surahFontFamily],
-                      fontSize: nameFontSize,
-                      color: textColor,
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -547,24 +495,31 @@ class _LineContent extends StatelessWidget {
         );
       },
     );
+    // When tajweed is disabled, flatten all glyph colours to textColor.
+    // The dark font variant (with CPAL palette 1) handles dark mode natively
+    // when tajweed is enabled, so no colour filter is needed in that case.
     if (!showTajweed) {
+      // Note: matrix offsets (m[4], m[9], m[14]) are in 0-255 space.
+      final r = (textColor.r * 255.0).roundToDouble();
+      final g = (textColor.g * 255.0).roundToDouble();
+      final b = (textColor.b * 255.0).roundToDouble();
       return ColorFiltered(
         colorFilter: ColorFilter.matrix(<double>[
           0,
           0,
           0,
           0,
-          (textColor.r * 255.0).roundToDouble() / 255.0,
+          r,
           0,
           0,
           0,
           0,
-          (textColor.g * 255.0).roundToDouble() / 255.0,
+          g,
           0,
           0,
           0,
           0,
-          (textColor.b * 255.0).roundToDouble() / 255.0,
+          b,
           0,
           0,
           0,
@@ -574,6 +529,7 @@ class _LineContent extends StatelessWidget {
         child: layoutResult,
       );
     }
+
     return layoutResult;
   }
 
