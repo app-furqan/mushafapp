@@ -1,14 +1,14 @@
 # Mushaf App
 
-A Flutter desktop/mobile Quran reader that renders the **Madinah Mushaf** using the **Quran.com QPC v4** tajweed font set — the same font system used by [Tarteel](https://tarteel.ai) and [quran.com](https://quran.com).
+A Flutter desktop/mobile Quran reader that renders the **Madinah Mushaf** using the **QPC v4** tajweed font set.
 
 ---
 
-## About the Quran.com QPC v4 Font System
+## About the QPC v4 Font System
 
 ### What is QPC v4?
 
-**QPC v4** (Quran Pages Coded, version 4) is the fourth generation of the digital typesetting system developed for [quran.com](https://quran.com) in collaboration with the **King Fahd Complex for the Printing of the Holy Quran** (Mujamma' al-Malik Fahd), Madinah. It faithfully represents the **Hafs ʿan ʿĀṣim** recitation according to the **Madinah Mushaf** (also called the Mushaf al-Madinah al-Nabawiyyah or the King Fahd Complex Mushaf).
+**QPC v4** (Quran Pages Coded, version 4) is the fourth generation of the digital typesetting system developed in collaboration with the **King Fahd Complex for the Printing of the Holy Quran** (Mujamma' al-Malik Fahd), Madinah. It faithfully represents the **Hafs ʿan ʿĀṣim** recitation according to the **Madinah Mushaf** (also called the Mushaf al-Madinah al-Nabawiyyah or the King Fahd Complex Mushaf).
 
 ### Font structure
 
