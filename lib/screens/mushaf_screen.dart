@@ -146,13 +146,20 @@ class _MushafScreenState extends State<MushafScreen> {
                   zoomNotifier: _zoomNotifier,
                   child: ColoredBox(
                     color: _displayMode.scaffoldColor,
-                    child: MushafPageWidget(
-                      pageNumber: pageNumber,
-                      pageData: _dataReady[pageNumber],
-                      chaptersById: _chaptersById,
-                      fontLoaded: _fontReady[pageNumber] ?? false,
-                      displayMode: _displayMode,
-                      showTajweed: _tajweedEnabled,
+                    child: Center(
+                      child: AspectRatio(
+                        // Standard Hafs mushaf is ~17 × 24 cm (ratio ≈ 0.71).
+                        // 0.67 leaves a little room for the outer border/padding.
+                        aspectRatio: 0.67,
+                        child: MushafPageWidget(
+                          pageNumber: pageNumber,
+                          pageData: _dataReady[pageNumber],
+                          chaptersById: _chaptersById,
+                          fontLoaded: _fontReady[pageNumber] ?? false,
+                          displayMode: _displayMode,
+                          showTajweed: _tajweedEnabled,
+                        ),
+                      ),
                     ),
                   ),
                 );
