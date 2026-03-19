@@ -31,6 +31,7 @@ class _MushafScreenState extends State<MushafScreen> {
 
   int _currentPage = _initialPage;
   bool _showBottomBar = true;
+  bool _showLegend = false;
   MushafDisplayMode _displayMode = MushafDisplayMode.light;
   bool _tajweedEnabled = true;
   final _zoomNotifier = ValueNotifier<double>(1.0);
@@ -138,7 +139,11 @@ class _MushafScreenState extends State<MushafScreen> {
     return Scaffold(
       backgroundColor: _displayMode.scaffoldColor,
       body: GestureDetector(
-        onTap: () => setState(() => _showBottomBar = !_showBottomBar),
+        onTap:
+            () => setState(() {
+              _showBottomBar = !_showBottomBar;
+              if (!_showBottomBar) _showLegend = false;
+            }),
         child: Stack(
           children: [
             PageView.builder(
@@ -176,6 +181,11 @@ class _MushafScreenState extends State<MushafScreen> {
               },
             ),
             if (_showBottomBar) _buildBottomBar(),
+            if (_showLegend)
+              _TajweedLegend(
+                displayMode: _displayMode,
+                onClose: () => setState(() => _showLegend = false),
+              ),
           ],
         ),
       ),
@@ -342,6 +352,21 @@ class _MushafScreenState extends State<MushafScreen> {
                 constraints: const BoxConstraints(),
               ),
               IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: 'Tajweed legend',
+                onPressed:
+                    _tajweedEnabled
+                        ? () => setState(() => _showLegend = !_showLegend)
+                        : null,
+                color:
+                    _tajweedEnabled
+                        ? (_showLegend ? const Color(0xFF1B7340) : textColor)
+                        : textColor.withValues(alpha: 0.35),
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
                 icon: const Icon(Icons.format_list_bulleted),
                 tooltip: 'Go to Surah',
                 onPressed: () => _showSurahListDialog(context),
@@ -412,6 +437,168 @@ class _MushafScreenState extends State<MushafScreen> {
               ),
             ],
           ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tajweed legend overlay
+// ---------------------------------------------------------------------------
+
+class _TajweedLegend extends StatelessWidget {
+  final MushafDisplayMode displayMode;
+  final VoidCallback onClose;
+
+  const _TajweedLegend({required this.displayMode, required this.onClose});
+
+  static const _rules = [
+    (color: Color(0xFFB50000), arabic: 'قَلْقَلَة', label: 'Qalqala'),
+    (
+      color: Color(0xFFFF7B00),
+      arabic: 'إِخْفَاء / إِقْلَاب',
+      label: 'Ikhfāʾ / Iqlab',
+    ),
+    (color: Color(0xFFCE9E00), arabic: 'إِظْهَار', label: 'Iẓhār'),
+    (color: Color(0xFF09B000), arabic: 'مَدّ', label: 'Madd'),
+    (color: Color(0xFF3F48E6), arabic: 'غُنَّة', label: 'Ghunna'),
+    (color: Color(0xFF2FADFF), arabic: 'إِدْغَام', label: 'Idghām'),
+    (color: Color(0xFFF40000), arabic: 'مَدّ لَازِم', label: 'Madd lāzim'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = displayMode.brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF1E2E22) : Colors.white;
+    final borderColor = displayMode.borderColor;
+    final textColor = displayMode.textColor;
+    final labelColor = isDark ? Colors.white70 : Colors.black87;
+
+    return Positioned(
+      bottom: 52,
+      right: 12,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 260,
+          decoration: BoxDecoration(
+            color: bg,
+            border: Border.all(color: borderColor.withValues(alpha: 0.6)),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+                child: Row(
+                  children: [
+                    Text(
+                      'Tajweed Legend',
+                      style: TextStyle(
+                        color: labelColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      onPressed: onClose,
+                      color: labelColor.withValues(alpha: 0.6),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              ),
+              Divider(
+                height: 1,
+                thickness: 0.75,
+                color: borderColor.withValues(alpha: 0.3),
+              ),
+              // Base ink row
+              _LegendRow(
+                color: isDark ? Colors.white : Colors.black,
+                arabic: 'نَص',
+                label: 'Standard text',
+                textColor: textColor,
+                labelColor: labelColor,
+              ),
+              // Tajweed rule rows
+              for (final rule in _rules)
+                _LegendRow(
+                  color: rule.color,
+                  arabic: rule.arabic,
+                  label: rule.label,
+                  textColor: textColor,
+                  labelColor: labelColor,
+                ),
+              const SizedBox(height: 4),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendRow extends StatelessWidget {
+  final Color color;
+  final String arabic;
+  final String label;
+  final Color textColor;
+  final Color labelColor;
+
+  const _LegendRow({
+    required this.color,
+    required this.arabic,
+    required this.label,
+    required this.textColor,
+    required this.labelColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            arabic,
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              fontSize: 13,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: labelColor.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
