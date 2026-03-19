@@ -34,11 +34,15 @@ class _MushafScreenState extends State<MushafScreen> {
   MushafDisplayMode _displayMode = MushafDisplayMode.light;
   bool _tajweedEnabled = true;
   final _zoomNotifier = ValueNotifier<double>(1.0);
+  late final TextEditingController _pageInputController;
+  late final FocusNode _pageInputFocusNode;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _initialPage - 1);
+    _pageInputController = TextEditingController(text: '$_initialPage');
+    _pageInputFocusNode = FocusNode();
     _loadChapterMetadata();
     _loadPageData(_initialPage);
     _loadPageData(_initialPage + 1);
@@ -67,6 +71,8 @@ class _MushafScreenState extends State<MushafScreen> {
   void dispose() {
     _pageController.dispose();
     _zoomNotifier.dispose();
+    _pageInputController.dispose();
+    _pageInputFocusNode.dispose();
     super.dispose();
   }
 
@@ -109,6 +115,10 @@ class _MushafScreenState extends State<MushafScreen> {
     final pageNumber = index + 1;
     _zoomNotifier.value = 1.0;
     setState(() => _currentPage = pageNumber);
+    // Keep the text box in sync when the user swipes between pages.
+    if (!_pageInputFocusNode.hasFocus) {
+      _pageInputController.text = '$pageNumber';
+    }
     for (final p in [pageNumber - 1, pageNumber, pageNumber + 1]) {
       _loadPageData(p);
       _loadPageFont(p);
@@ -238,12 +248,43 @@ class _MushafScreenState extends State<MushafScreen> {
                 constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () => _showPageJumpDialog(context),
-                child: Text(
-                  '$_currentPage / $_totalPages',
+              SizedBox(
+                width: 46,
+                height: 28,
+                child: TextField(
+                  controller: _pageInputController,
+                  focusNode: _pageInputFocusNode,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: textColor, fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 4,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      borderSide: BorderSide(
+                        color: textColor.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      borderSide: BorderSide(color: textColor),
+                    ),
+                  ),
+                  onSubmitted: (value) {
+                    final p = int.tryParse(value);
+                    if (p != null) _jumpToPage(p);
+                    _pageInputController.text = '$_currentPage';
+                    _pageInputFocusNode.unfocus();
+                  },
                 ),
+              ),
+              Text(
+                ' / $_totalPages',
+                style: TextStyle(color: textColor, fontSize: 13),
               ),
               const SizedBox(width: 4),
               ValueListenableBuilder<double>(
@@ -368,40 +409,6 @@ class _MushafScreenState extends State<MushafScreen> {
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Cancel'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  void _showPageJumpDialog(BuildContext context) {
-    final controller = TextEditingController(text: '$_currentPage');
-    showDialog<void>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Go to page'),
-            content: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: '1 – 604',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final p = int.tryParse(controller.text);
-                  if (p != null) _jumpToPage(p);
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Go'),
               ),
             ],
           ),
