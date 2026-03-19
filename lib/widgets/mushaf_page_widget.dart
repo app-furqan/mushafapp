@@ -132,7 +132,8 @@ class _PageLines extends StatelessWidget {
     final isDark = displayMode.brightness == Brightness.dark;
     final fontFamily = FontService.fontFamilyForPage(
       pageNumber,
-      dark: isDark && showTajweed,
+      dark: isDark,
+      flat: !showTajweed,
     );
     final lineSlots = List<LineData?>.generate(
       PageData.totalLines,
@@ -495,41 +496,11 @@ class _LineContent extends StatelessWidget {
         );
       },
     );
-    // When tajweed is disabled, flatten all glyph colours to textColor.
-    // The dark font variant (with CPAL palette 1) handles dark mode natively
-    // when tajweed is enabled, so no colour filter is needed in that case.
-    if (!showTajweed) {
-      // Note: matrix offsets (m[4], m[9], m[14]) are in 0-255 space.
-      final r = (textColor.r * 255.0).roundToDouble();
-      final g = (textColor.g * 255.0).roundToDouble();
-      final b = (textColor.b * 255.0).roundToDouble();
-      return ColorFiltered(
-        colorFilter: ColorFilter.matrix(<double>[
-          0,
-          0,
-          0,
-          0,
-          r,
-          0,
-          0,
-          0,
-          0,
-          g,
-          0,
-          0,
-          0,
-          0,
-          b,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
-        child: layoutResult,
-      );
-    }
-
+    // When tajweed is disabled the "flat" font variant is used (selected in
+    // _PageLines) which redirects all COLR tajweed layers to the foreground
+    // colour (0xFFFF) at the font level, so no widget-level colour filter is
+    // needed.  Ayah-number ornament colours (palette entries 10-12) are
+    // preserved by the flat variant.
     return layoutResult;
   }
 

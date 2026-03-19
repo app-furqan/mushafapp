@@ -6,9 +6,20 @@ class FontService {
   static final Set<int> _loadedPages = <int>{};
   static final Map<int, Future<void>> _loadingPages = <int, Future<void>>{};
 
-  static String fontFamilyForPage(int pageNumber, {bool dark = false}) {
-    final normalized = pageNumber.clamp(1, _totalPages);
-    return dark ? 'QCF4V4DarkPage$normalized' : 'QCF4V4Page$normalized';
+  /// Returns the font family name for a given page.
+  ///
+  /// [dark] selects the dark-mode palette (CPAL 0↔1 swapped).
+  /// [flat] selects the no-tajweed variant where all COLR tajweed layers use
+  /// the foreground colour (0xFFFF) while ayah-number ornament colours are
+  /// preserved.
+  static String fontFamilyForPage(
+    int pageNumber, {
+    bool dark = false,
+    bool flat = false,
+  }) {
+    final n = pageNumber.clamp(1, _totalPages);
+    if (flat) return dark ? 'QCF4V4FlatDkP$n' : 'QCF4V4FlatP$n';
+    return dark ? 'QCF4V4DarkPage$n' : 'QCF4V4Page$n';
   }
 
   static const String surahFontFamily = 'QCF4Surah';
@@ -44,24 +55,72 @@ class FontService {
   static Future<void> _loadFromAssets(int pageNumber) async {
     final byteData = await rootBundle.load('assets/fonts/v4/p$pageNumber.ttf');
 
-    // Register light variant (CPAL palette 0 = black ink + tajweed colours).
-    final lightFamily = fontFamilyForPage(pageNumber);
-    final lightLoader = FontLoader(lightFamily);
+    // 1. Light variant — original (CPAL palette 0 = black ink + tajweed).
+    final lightLoader = FontLoader(fontFamilyForPage(pageNumber));
     lightLoader.addFont(Future.value(byteData));
 
-    // Register dark variant (CPAL palette 0↔1 swapped so palette 1 — white
-    // ink + adjusted tajweed colours — becomes the default).
-    final darkData = _patchCpalPaletteSwap(byteData);
-    final darkFamily = fontFamilyForPage(pageNumber, dark: true);
-    final darkLoader = FontLoader(darkFamily);
+    // 2. Dark variant — palette 0↔1 swapped (white ink + dark tajweed).
+    final darkData = _patchFont(byteData, swapPalettes: true);
+    final darkLoader = FontLoader(fontFamilyForPage(pageNumber, dark: true));
     darkLoader.addFont(Future.value(darkData));
 
-    await Future.wait([lightLoader.load(), darkLoader.load()]);
+    // 3. Flat-light — tajweed COLR layers → 0xFFFF (foreground colour),
+    //    ayah ornament layers preserved.
+    final flatData = _patchFont(byteData, flattenTajweed: true);
+    final flatLoader = FontLoader(fontFamilyForPage(pageNumber, flat: true));
+    flatLoader.addFont(Future.value(flatData));
+
+    // 4. Flat-dark — swap + flatten.
+    final flatDarkData = _patchFont(
+      byteData,
+      swapPalettes: true,
+      flattenTajweed: true,
+    );
+    final flatDarkLoader = FontLoader(
+      fontFamilyForPage(pageNumber, dark: true, flat: true),
+    );
+    flatDarkLoader.addFont(Future.value(flatDarkData));
+
+    await Future.wait([
+      lightLoader.load(),
+      darkLoader.load(),
+      flatLoader.load(),
+      flatDarkLoader.load(),
+    ]);
   }
 
-  /// Returns a copy of [original] with the CPAL palette indices 0 and 1
-  /// swapped so the dark-mode palette becomes the default.
-  static ByteData _patchCpalPaletteSwap(ByteData original) {
+  // ---------------------------------------------------------------------------
+  // Font-byte patching helpers
+  // ---------------------------------------------------------------------------
+
+  /// Finds the file offset of the table with the given 4-char [tag], or null.
+  static int? _findTableOffset(ByteData data, String tag) {
+    final numTables = data.getUint16(4);
+    for (var i = 0; i < numTables; i++) {
+      final recOff = 12 + i * 16;
+      if (data.getUint8(recOff) == tag.codeUnitAt(0) &&
+          data.getUint8(recOff + 1) == tag.codeUnitAt(1) &&
+          data.getUint8(recOff + 2) == tag.codeUnitAt(2) &&
+          data.getUint8(recOff + 3) == tag.codeUnitAt(3)) {
+        return data.getUint32(recOff + 8);
+      }
+    }
+    return null;
+  }
+
+  /// Returns a patched copy of [original].
+  ///
+  /// [swapPalettes] swaps CPAL colorRecordIndices 0 ↔ 1 so the dark palette
+  /// becomes the default.
+  ///
+  /// [flattenTajweed] rewrites every COLR v0 layer record whose paletteIndex
+  /// is NOT an ayah-number ornament entry (10, 11, 12) to 0xFFFF so the
+  /// renderer uses the TextStyle foreground colour instead.
+  static ByteData _patchFont(
+    ByteData original, {
+    bool swapPalettes = false,
+    bool flattenTajweed = false,
+  }) {
     final src = original.buffer.asUint8List(
       original.offsetInBytes,
       original.lengthInBytes,
@@ -69,27 +128,37 @@ class FontService {
     final bytes = Uint8List.fromList(src);
     final data = ByteData.view(bytes.buffer);
 
-    // Parse OTF/TTF table directory to find CPAL table offset.
-    final numTables = data.getUint16(4); // big-endian
-    int? cpalOffset;
-    for (var i = 0; i < numTables; i++) {
-      final recOff = 12 + i * 16;
-      // 'CPAL' = 0x43 0x50 0x41 0x4C
-      if (data.getUint8(recOff) == 0x43 &&
-          data.getUint8(recOff + 1) == 0x50 &&
-          data.getUint8(recOff + 2) == 0x41 &&
-          data.getUint8(recOff + 3) == 0x4C) {
-        cpalOffset = data.getUint32(recOff + 8);
-        break;
+    // --- CPAL palette swap ---------------------------------------------------
+    if (swapPalettes) {
+      final cpalOff = _findTableOffset(data, 'CPAL');
+      if (cpalOff != null) {
+        final idx0 = data.getUint16(cpalOff + 12);
+        final idx1 = data.getUint16(cpalOff + 14);
+        data.setUint16(cpalOff + 12, idx1);
+        data.setUint16(cpalOff + 14, idx0);
       }
     }
-    if (cpalOffset == null) return original;
 
-    // CPAL layout: ...+12 = colorRecordIndices[0], +14 = colorRecordIndices[1]
-    final idx0 = data.getUint16(cpalOffset + 12);
-    final idx1 = data.getUint16(cpalOffset + 14);
-    data.setUint16(cpalOffset + 12, idx1);
-    data.setUint16(cpalOffset + 14, idx0);
+    // --- COLR tajweed flatten ------------------------------------------------
+    if (flattenTajweed) {
+      final colrOff = _findTableOffset(data, 'COLR');
+      if (colrOff != null) {
+        final layerRecOff = colrOff + data.getUint32(colrOff + 8);
+        final numLayers = data.getUint16(colrOff + 12);
+
+        // Palette entries 10, 11, 12 are the decorative ayah-number ornament
+        // colours and must be preserved.  Everything else (base ink, tajweed
+        // marks, structural grays) is redirected to the foreground colour.
+        const ornament = {10, 11, 12};
+        for (var i = 0; i < numLayers; i++) {
+          final palOff = layerRecOff + i * 4 + 2;
+          final palIdx = data.getUint16(palOff);
+          if (palIdx != 0xFFFF && !ornament.contains(palIdx)) {
+            data.setUint16(palOff, 0xFFFF);
+          }
+        }
+      }
+    }
 
     return data;
   }
