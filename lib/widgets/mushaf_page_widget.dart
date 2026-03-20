@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/chapter_model.dart';
 import '../models/mushaf_display_mode.dart';
+import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
 import '../services/font_service.dart';
 
@@ -12,6 +13,7 @@ class MushafPageWidget extends StatelessWidget {
   final bool fontLoaded;
   final MushafDisplayMode displayMode;
   final bool showTajweed;
+  final MushafType mushafType;
 
   const MushafPageWidget({
     super.key,
@@ -21,6 +23,7 @@ class MushafPageWidget extends StatelessWidget {
     required this.fontLoaded,
     required this.displayMode,
     this.showTajweed = true,
+    this.mushafType = MushafType.hafs,
   });
 
   @override
@@ -57,7 +60,10 @@ class MushafPageWidget extends StatelessWidget {
                   ),
                   child:
                       pageData == null
-                          ? _LoadingLines(textColor: textColor)
+                          ? _LoadingLines(
+                            textColor: textColor,
+                            linesPerPage: mushafType.linesPerPage,
+                          )
                           : _PageLines(
                             pageNumber: pageNumber,
                             pageData: pageData!,
@@ -67,6 +73,7 @@ class MushafPageWidget extends StatelessWidget {
                             borderColor: borderColor,
                             showTajweed: showTajweed,
                             displayMode: displayMode,
+                            mushafType: mushafType,
                           ),
                 ),
               ),
@@ -86,12 +93,13 @@ class MushafPageWidget extends StatelessWidget {
 
 class _LoadingLines extends StatelessWidget {
   final Color textColor;
-  const _LoadingLines({required this.textColor});
+  final int linesPerPage;
+  const _LoadingLines({required this.textColor, this.linesPerPage = 15});
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: List.generate(PageData.totalLines, (_) {
+      children: List.generate(linesPerPage, (_) {
         return Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
@@ -115,6 +123,7 @@ class _PageLines extends StatelessWidget {
   final Color borderColor;
   final bool showTajweed;
   final MushafDisplayMode displayMode;
+  final MushafType mushafType;
 
   const _PageLines({
     required this.pageNumber,
@@ -125,18 +134,26 @@ class _PageLines extends StatelessWidget {
     required this.borderColor,
     required this.showTajweed,
     required this.displayMode,
+    required this.mushafType,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = displayMode.brightness == Brightness.dark;
-    final fontFamily = FontService.fontFamilyForPage(
-      pageNumber,
-      dark: isDark,
-      flat: !showTajweed,
-    );
+    final String fontFamily;
+    if (mushafType == MushafType.indopak) {
+      fontFamily = FontService.indopakFontFamily;
+    } else {
+      fontFamily = FontService.fontFamilyForPage(
+        pageNumber,
+        dark: isDark,
+        flat: !showTajweed,
+      );
+    }
+
+    final linesPerPage = mushafType.linesPerPage;
     final lineSlots = List<LineData?>.generate(
-      PageData.totalLines,
+      linesPerPage,
       (slotIndex) => pageData.lineFor(slotIndex + 1),
     );
     final centeredAyahCount =
@@ -148,20 +165,36 @@ class _PageLines extends StatelessWidget {
     final hasTrailingBlanks = lineSlots.any((line) => line == null);
     final useCenteredProfile = centeredAyahCount >= 4 || hasTrailingBlanks;
 
-    // The page always has a fixed aspect-ratio parent (AspectRatio widget in
-    // MushafScreen), so this Column receives a finite bounded height.
-    // Flexible distributes that height proportionally across the 15 line slots
-    // so each line has exactly that much vertical space and text is centred
-    // inside it — matching the evenly-spaced appearance of the printed mushaf.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final lineData in lineSlots)
           Flexible(
-            flex: _lineFlex(lineData, useCenteredProfile),
-            child: _buildLine(lineData, fontFamily),
+            flex:
+                mushafType == MushafType.indopak
+                    ? _indopakLineFlex(lineData)
+                    : _hafsLineFlex(lineData, useCenteredProfile),
+            child: _buildLineSlot(lineData, fontFamily),
           ),
       ],
+    );
+  }
+
+  Widget _buildLineSlot(LineData? lineData, String fontFamily) {
+    final line = _buildLine(lineData, fontFamily);
+    if (mushafType != MushafType.indopak || lineData == null) {
+      return line;
+    }
+
+    final verticalPadding = switch (lineData.lineType) {
+      PageLineType.surahName => 1.5,
+      PageLineType.basmallah => 1.0,
+      PageLineType.ayah => 0.75,
+    };
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: verticalPadding),
+      child: line,
     );
   }
 
@@ -171,12 +204,23 @@ class _PageLines extends StatelessWidget {
     }
 
     return switch (lineData.lineType) {
-      PageLineType.surahName => _SurahNameBox(
+      PageLineType.surahName =>
+        mushafType == MushafType.indopak
+            ? _SurahNameTextBox(
+              textColor: textColor,
+              borderColor: borderColor,
+              surahNumber: lineData.surahNumber ?? 1,
+              chaptersById: chaptersById,
+            )
+            : _SurahNameBox(
+              textColor: textColor,
+              borderColor: borderColor,
+              surahNumber: lineData.surahNumber ?? 1,
+            ),
+      PageLineType.basmallah => _BismillahLine(
         textColor: textColor,
-        borderColor: borderColor,
-        surahNumber: lineData.surahNumber ?? 1,
+        fontFamily: fontFamily,
       ),
-      PageLineType.basmallah => _BismillahLine(textColor: textColor),
       PageLineType.ayah => _LineContent(
         lineData: lineData,
         textColor: textColor,
@@ -187,20 +231,25 @@ class _PageLines extends StatelessWidget {
     };
   }
 
-  int _lineFlex(LineData? lineData, bool useCenteredProfile) {
-    // Each flex unit = 1/Σflex of the available page-text-area height.
-    // All 15 slots must sum to the same total whether the page is normal or
-    // has surah headers, so lines given smaller flex compensate with larger
-    // flex on adjacent lines via the "null" blank-slot weight.
+  // IndoPak: keep the same 15-slot grid visible on every page, including the
+  // introductory pages where the final slots are intentionally blank.
+  int _indopakLineFlex(LineData? lineData) {
     if (lineData == null) {
-      // Trailing blank slot — give it the same weight as a normal ayah line
-      // so pages that end early still space out evenly.
       return 100;
     }
 
-    // Surah header (frame glyph) is very wide and short (~10:1 aspect ratio).
-    // Give it a small but non-trivial slot so it doesn't crowd adjacent lines.
-    // Bismillah is taller (large glyph), gets a bit more.
+    return switch (lineData.lineType) {
+      PageLineType.surahName => 72,
+      PageLineType.basmallah => 88,
+      PageLineType.ayah => 100,
+    };
+  }
+
+  // Hafs (QCF4): fixed-slot flex weights matching the printed 15-line grid.
+  int _hafsLineFlex(LineData? lineData, bool useCenteredProfile) {
+    if (lineData == null) {
+      return 100;
+    }
     return switch (lineData.lineType) {
       PageLineType.surahName => 55,
       PageLineType.basmallah => 80,
@@ -329,30 +378,106 @@ class _SurahNameBox extends StatelessWidget {
   }
 }
 
-/// Bismillah line rendered with the page font.
-class _BismillahLine extends StatelessWidget {
+/// Surah name banner for the IndoPak edition.
+///
+/// Uses the Arabic surah name from chapter metadata instead of the QCF4Surah
+/// glyph font, because the IndoPak edition does not use per-page QCF4 fonts.
+class _SurahNameTextBox extends StatelessWidget {
   final Color textColor;
+  final Color borderColor;
+  final int surahNumber;
+  final Map<int, ChapterModel> chaptersById;
 
-  const _BismillahLine({required this.textColor});
-
-  static const _bismillah = '\uFDFD';
+  const _SurahNameTextBox({
+    required this.textColor,
+    required this.borderColor,
+    required this.surahNumber,
+    required this.chaptersById,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final n = surahNumber.clamp(1, 114);
+    final name = chaptersById[n]?.nameArabic ?? '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: borderColor.withValues(alpha: 0.85),
+          width: 1.0,
+        ),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: borderColor.withValues(alpha: 0.45),
+            width: 0.7,
+          ),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+              child: Text(
+                name,
+                textDirection: TextDirection.rtl,
+                style: TextStyle(
+                  fontFamily: FontService.indopakFontFamily,
+                  fontSize: 26,
+                  color: textColor,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bismillah line rendered with the page font.
+class _BismillahLine extends StatelessWidget {
+  final Color textColor;
+  final String fontFamily;
+
+  const _BismillahLine({required this.textColor, required this.fontFamily});
+
+  static const _bismillah = 'بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ';
+  static const _bismillahHafs = '\uFDFD';
+
+  bool get _isIndopak => fontFamily == FontService.indopakFontFamily;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _isIndopak ? _bismillah : _bismillahHafs;
     return Align(
       alignment: Alignment.center,
-      child: Padding(
-        // Top padding ensures a clear gap below the surah header above.
-        padding: const EdgeInsets.only(top: 4, bottom: 1),
-        child: Text(
-          _bismillah,
-          textDirection: TextDirection.rtl,
-          style: TextStyle(
-            fontFamily: FontService.uthmanicHafsFamily,
-            fontFamilyFallback: const [FontService.surahFontFamily],
-            fontSize: 22,
-            color: textColor,
-            height: 1.05,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Text(
+            text,
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              fontFamily: fontFamily,
+              fontFamilyFallback:
+                  _isIndopak
+                      ? null
+                      : const [
+                        FontService.uthmanicHafsFamily,
+                        FontService.surahFontFamily,
+                      ],
+              fontSize: _isIndopak ? 28 : 22,
+              color: textColor,
+              height: 1.15,
+            ),
           ),
         ),
       ),
@@ -377,23 +502,37 @@ class _LineContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isIndopak = fontFamily == FontService.indopakFontFamily;
+    final lineAlignment =
+        isIndopak
+            ? Alignment.center
+            : (lineData.isCentered ? Alignment.center : Alignment.centerRight);
+    final lineTextAlign =
+        isIndopak
+            ? TextAlign.center
+            : (lineData.isCentered ? TextAlign.center : TextAlign.right);
+
     if (!fontLoaded) {
       return Align(
-        alignment:
-            lineData.isCentered ? Alignment.center : Alignment.centerRight,
+        alignment: lineAlignment,
         child: Directionality(
           textDirection: TextDirection.rtl,
           child: Text(
             lineData.fallbackText,
             textDirection: TextDirection.rtl,
-            textAlign: lineData.isCentered ? TextAlign.center : TextAlign.right,
+            textAlign: lineTextAlign,
             maxLines: 1,
             overflow: TextOverflow.clip,
             style: TextStyle(
-              fontFamily: FontService.uthmanicHafsFamily,
-              fontSize: 21,
+              fontFamily:
+                  isIndopak
+                      ? FontService.indopakFontFamily
+                      : FontService.uthmanicHafsFamily,
+              fontFamilyFallback:
+                  isIndopak ? null : const [FontService.uthmanicHafsFamily],
+              fontSize: isIndopak ? 22.5 : 21,
               color: textColor,
-              height: 1.18,
+              height: isIndopak ? 1.0 : 1.18,
             ),
           ),
         ),
@@ -403,13 +542,15 @@ class _LineContent extends StatelessWidget {
     final layoutResult = LayoutBuilder(
       builder: (context, constraints) {
         // Measure all words at a stable base size first.
-        const double baseSize = 25.5;
+        final baseSize = isIndopak ? 22.5 : 25.5;
+        final lineHeight = isIndopak ? 1.0 : 1.08;
         final baseStyle = TextStyle(
           fontFamily: fontFamily,
-          fontFamilyFallback: const [FontService.uthmanicHafsFamily],
+          fontFamilyFallback:
+              isIndopak ? null : const [FontService.uthmanicHafsFamily],
           fontSize: baseSize,
           color: textColor,
-          height: 1.08,
+          height: lineHeight,
           fontFeatures: const [
             FontFeature.enable('liga'),
             FontFeature.enable('calt'),
@@ -430,29 +571,49 @@ class _LineContent extends StatelessWidget {
         final availableWidth =
             constraints.maxWidth.isFinite ? constraints.maxWidth : contentWidth;
 
-        // For non-centered (full-justification) lines, scale the font so the
-        // words fill the available width exactly with a minimal 1.5 px gap
-        // between each word.  Centered lines keep the base size and are
-        // positioned by Align.center below.
+        // IndoPak lines look cleaner when the font size stays stable and the
+        // remaining width is absorbed mostly as word spacing. Hafs keeps the
+        // more aggressive per-line fitting used by the page fonts.
         final double fontSize;
-        const double gapWidth = 1.5;
+        final double gapWidth;
+        final minGapWidth = isIndopak ? 3.0 : 1.5;
         if (lineData.isCentered || contentWidth < 1) {
           fontSize = baseSize;
+          gapWidth = minGapWidth;
+        } else if (isIndopak) {
+          final preferredGap = ((availableWidth - contentWidth) / gapCount)
+              .clamp(minGapWidth, 12.0);
+          final widthWithPreferredGaps = contentWidth + preferredGap * gapCount;
+
+          if (widthWithPreferredGaps <= availableWidth) {
+            fontSize = baseSize;
+            gapWidth = preferredGap;
+          } else {
+            final totalFixedGap = minGapWidth * gapCount;
+            final scaleFactor = (availableWidth - totalFixedGap) / contentWidth;
+            fontSize = (baseSize * scaleFactor).clamp(
+              baseSize * 0.82,
+              baseSize * 1.06,
+            );
+            gapWidth = minGapWidth;
+          }
         } else {
-          final totalFixedGap = gapWidth * gapCount;
+          final totalFixedGap = minGapWidth * gapCount;
           final scaleFactor = (availableWidth - totalFixedGap) / contentWidth;
           fontSize = (baseSize * scaleFactor).clamp(
             baseSize * 0.4,
             baseSize * 4.0,
           );
+          gapWidth = minGapWidth;
         }
 
         final style = TextStyle(
           fontFamily: fontFamily,
-          fontFamilyFallback: const [FontService.uthmanicHafsFamily],
+          fontFamilyFallback:
+              isIndopak ? null : const [FontService.uthmanicHafsFamily],
           fontSize: fontSize,
           color: textColor,
-          height: 1.08,
+          height: lineHeight,
           fontFeatures: const [
             FontFeature.enable('liga'),
             FontFeature.enable('calt'),
@@ -485,12 +646,10 @@ class _LineContent extends StatelessWidget {
         );
 
         return Align(
-          alignment:
-              lineData.isCentered ? Alignment.center : Alignment.centerRight,
+          alignment: lineAlignment,
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            alignment:
-                lineData.isCentered ? Alignment.center : Alignment.centerRight,
+            alignment: lineAlignment,
             child: row,
           ),
         );

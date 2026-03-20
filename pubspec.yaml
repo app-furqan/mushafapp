@@ -25,6 +25,7 @@ flutter:
 
   assets:
     - assets/fonts/v4/
+    - assets/fonts/indopak.ttf
     - assets/data/
 
   fonts:

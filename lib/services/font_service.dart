@@ -3,8 +3,26 @@ import 'package:flutter/services.dart';
 class FontService {
   static const int _totalPages = 604;
   static const String uthmanicHafsFamily = 'UthmanicHafs';
+  static const String indopakFontFamily = 'IndopakNastaleeq';
   static final Set<int> _loadedPages = <int>{};
   static final Map<int, Future<void>> _loadingPages = <int, Future<void>>{};
+
+  static bool _indopakLoaded = false;
+  static Future<void>? _indopakFuture;
+
+  static Future<void> ensureIndopakFontLoaded() {
+    if (_indopakLoaded) return Future.value();
+    return _indopakFuture ??= _loadIndopakFont();
+  }
+
+  static Future<void> _loadIndopakFont() async {
+    final byteData = await rootBundle.load('assets/fonts/indopak.ttf');
+    final loader = FontLoader(indopakFontFamily);
+    loader.addFont(Future.value(byteData));
+    await loader.load();
+    _indopakLoaded = true;
+    _indopakFuture = null;
+  }
 
   /// Returns the font family name for a given page.
   ///

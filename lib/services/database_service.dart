@@ -5,14 +5,25 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
 import '../models/word_model.dart';
 
 class DatabaseService {
+  static const int _lamCodePoint = 0x0644;
+  static const Set<int> _alefCodePoints = {
+    0x0622,
+    0x0623,
+    0x0625,
+    0x0627,
+    0x0671,
+  };
+
   static DatabaseService? _instance;
   Database? _qpcDb;
   Database? _layoutDb;
-
+  Database? _indopakLayoutDb;
+  Database? _indopakWordsDb;
   DatabaseService._();
 
   static DatabaseService get instance {
@@ -26,6 +37,19 @@ class DatabaseService {
     _layoutDb = await _openAssetDb(
       'assets/data/qpc-v4-tajweed-15-lines.db',
       'qpc-v4-tajweed-15-lines.db',
+    );
+  }
+
+  Future<void> _initializeIndopak() async {
+    if (_indopakLayoutDb != null) return;
+    await initialize(); // ensure qpcDb is ready
+    _indopakLayoutDb = await _openAssetDb(
+      'assets/data/qudratullah-indopak-15-lines.db',
+      'qudratullah-indopak-15-lines.db',
+    );
+    _indopakWordsDb = await _openAssetDb(
+      'assets/data/indopak-nastaleeq.db',
+      'indopak-nastaleeq.db',
     );
   }
 
@@ -48,11 +72,21 @@ class DatabaseService {
     return _layoutDb!;
   }
 
-  Future<PageData> getPage(int pageNumber) async {
-    await initialize();
+  Future<PageData> getPage(
+    int pageNumber, [
+    MushafType mushafType = MushafType.hafs,
+  ]) async {
+    final Database activeLayoutDb;
+    if (mushafType == MushafType.indopak) {
+      await _initializeIndopak();
+      activeLayoutDb = _indopakLayoutDb!;
+    } else {
+      await initialize();
+      activeLayoutDb = _layoutDb!;
+    }
 
-    // 1. Fetch layout lines from digital-khatt DB
-    final layoutRows = await _layoutDb!.query(
+    // 1. Fetch layout lines from layout DB
+    final layoutRows = await activeLayoutDb.query(
       'pages',
       where: 'page_number = ?',
       whereArgs: [pageNumber],
@@ -63,8 +97,10 @@ class DatabaseService {
       return PageData(pageNumber: pageNumber, lines: const []);
     }
 
-    // 2. For each ayah line, bulk-fetch words from qpc-v4 DB
+    // 2. For each ayah line, bulk-fetch words from appropriate words DB
     // Collect all needed word ID ranges first to do fewer queries
+    final Database activeWordsDb =
+        mushafType == MushafType.indopak ? _indopakWordsDb! : _qpcDb!;
     final List<LineData> lines = [];
     for (final row in layoutRows) {
       final lineNumber = row['line_number'] as int;
@@ -88,7 +124,7 @@ class DatabaseService {
           final int first = firstId is int ? firstId : int.parse('$firstId');
           final int last = lastId is int ? lastId : int.parse('$lastId');
           if (first <= last) {
-            final wordRows = await _qpcDb!.query(
+            final wordRows = await activeWordsDb.query(
               'words',
               where: 'id BETWEEN ? AND ?',
               whereArgs: [first, last],
@@ -96,7 +132,10 @@ class DatabaseService {
             );
             words =
                 wordRows
-                    .map((w) => _wordFromRow(w, pageNumber, lineNumber))
+                    .map(
+                      (w) =>
+                          _wordFromRow(w, pageNumber, lineNumber, mushafType),
+                    )
                     .toList();
           }
         }
@@ -128,12 +167,17 @@ class DatabaseService {
     Map<String, dynamic> row,
     int pageNumber,
     int lineNumber,
+    MushafType mushafType,
   ) {
     final id = row['id'] as int;
     final surah = row['surah'] as int;
     final ayah = row['ayah'] as int;
     final wordPos = row['word'] as int;
-    final glyphText = row['text'] as String;
+    final rawText = row['text'] as String;
+    final glyphText =
+        mushafType == MushafType.indopak
+            ? _normalizeIndopakText(rawText)
+            : rawText;
     final location = row['location'] as String? ?? '$surah:$ayah:$wordPos';
     // location is "surah:ayah:word", verseKey is "surah:ayah"
     final parts = location.split(':');
@@ -151,5 +195,46 @@ class DatabaseService {
       lineNumber: lineNumber,
       charTypeName: 'word',
     );
+  }
+
+  String _normalizeIndopakText(String text) {
+    final codePoints = text.runes.toList(growable: false);
+    if (codePoints.length < 3) {
+      return text;
+    }
+
+    final normalized = <int>[];
+    for (var index = 0; index < codePoints.length; index++) {
+      final codePoint = codePoints[index];
+      if (codePoint != _lamCodePoint) {
+        normalized.add(codePoint);
+        continue;
+      }
+
+      final marks = <int>[];
+      var probe = index + 1;
+      while (probe < codePoints.length && _isArabicMark(codePoints[probe])) {
+        marks.add(codePoints[probe]);
+        probe += 1;
+      }
+
+      if (marks.isEmpty ||
+          probe >= codePoints.length ||
+          !_alefCodePoints.contains(codePoints[probe])) {
+        normalized.add(codePoint);
+        continue;
+      }
+
+      normalized.add(_lamCodePoint);
+      normalized.add(codePoints[probe]);
+      normalized.addAll(marks);
+      index = probe;
+    }
+
+    return String.fromCharCodes(normalized);
+  }
+
+  bool _isArabicMark(int codePoint) {
+    return (codePoint >= 0x064B && codePoint <= 0x065F) || codePoint == 0x0670;
   }
 }

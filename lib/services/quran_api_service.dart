@@ -1,24 +1,27 @@
+import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
 import 'database_service.dart';
 
 class QuranApiService {
-  final _cache = <int, PageData>{};
-  final _inflight = <int, Future<PageData>>{};
+  final _cache = <(int, MushafType), PageData>{};
+  final _inflight = <(int, MushafType), Future<PageData>>{};
 
-  Future<PageData> getPage(int pageNumber) async {
-    if (_cache.containsKey(pageNumber)) return _cache[pageNumber]!;
-    if (_inflight.containsKey(pageNumber)) return _inflight[pageNumber]!;
+  Future<PageData> getPage(
+    int pageNumber, [
+    MushafType mushafType = MushafType.hafs,
+  ]) async {
+    final key = (pageNumber, mushafType);
+    if (_cache.containsKey(key)) return _cache[key]!;
+    if (_inflight.containsKey(key)) return _inflight[key]!;
 
-    final future = DatabaseService.instance.getPage(pageNumber);
-    _inflight[pageNumber] = future;
+    final future = DatabaseService.instance.getPage(pageNumber, mushafType);
+    _inflight[key] = future;
     try {
       final result = await future;
-      _cache[pageNumber] = result;
+      _cache[key] = result;
       return result;
     } finally {
-      _inflight.remove(pageNumber);
+      _inflight.remove(key);
     }
   }
-
-  void invalidate(int pageNumber) => _cache.remove(pageNumber);
 }

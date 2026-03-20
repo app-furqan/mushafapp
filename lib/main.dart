@@ -1,15 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'screens/mushaf_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
   runApp(const MushafApp());
 }
 
