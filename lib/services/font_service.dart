@@ -7,6 +7,8 @@ class FontService {
   static const String uthmanicHafsFamily = 'UthmanicHafs';
   static const String indopakFontFamily = 'IndopakNastaleeq';
   static const String kfgqpcNastaleeqFontFamily = 'KFGQPCNastaleeq';
+  static const String digitalKhattIndoPakFontFamily = 'DigitalKhattIndoPak';
+  static const String nastaleeqFontFamily = 'Nastaleeq';
   static final Set<int> _loadedPages = <int>{};
   static final Map<int, Future<void>> _loadingPages = <int, Future<void>>{};
 
@@ -38,6 +40,9 @@ class FontService {
       IndopakFontChoice.indopak => 'assets/fonts/indopak.ttf',
       IndopakFontChoice.kfgqpcNastaleeq =>
         'assets/fonts/KFGQPCNastaleeq-Regular.ttf',
+      IndopakFontChoice.digitalKhattIndoPak =>
+        'assets/fonts/DigitalKhattIndoPak.otf',
+      IndopakFontChoice.nastaleeq => 'assets/fonts/Nastaleeq.ttf',
     };
     final byteData = await rootBundle.load(assetPath);
     final loader = FontLoader(fontFamilyForIndopakChoice(choice));
@@ -49,12 +54,16 @@ class FontService {
     return switch (choice) {
       IndopakFontChoice.indopak => indopakFontFamily,
       IndopakFontChoice.kfgqpcNastaleeq => kfgqpcNastaleeqFontFamily,
+      IndopakFontChoice.digitalKhattIndoPak => digitalKhattIndoPakFontFamily,
+      IndopakFontChoice.nastaleeq => nastaleeqFontFamily,
     };
   }
 
   static bool isIndopakFontFamily(String fontFamily) {
     return fontFamily == indopakFontFamily ||
-        fontFamily == kfgqpcNastaleeqFontFamily;
+        fontFamily == kfgqpcNastaleeqFontFamily ||
+        fontFamily == digitalKhattIndoPakFontFamily ||
+        fontFamily == nastaleeqFontFamily;
   }
 
   /// Returns the font family name for a given page.

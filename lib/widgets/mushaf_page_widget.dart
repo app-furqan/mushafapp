@@ -609,18 +609,13 @@ class _LineContent extends StatelessWidget {
 
           return Align(
             alignment: lineAlignment,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: lineAlignment,
-              child: Semantics(
-                label: lineData.fallbackText,
-                child: ExcludeSemantics(
-                  child: Text(
-                    lineGlyphText,
-                    textDirection: TextDirection.rtl,
-                    textAlign: lineTextAlign,
-                    style: style,
-                  ),
+            child: Semantics(
+              label: lineData.fallbackText,
+              child: ExcludeSemantics(
+                child: _ScaledIndopakText(
+                  text: lineGlyphText,
+                  style: style,
+                  textAlign: lineTextAlign,
                 ),
               ),
             ),
@@ -740,5 +735,105 @@ class _LineContent extends StatelessWidget {
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
     return painter.width;
+  }
+}
+
+class _ScaledIndopakText extends StatelessWidget {
+  static const double _renderScale = 4.0;
+
+  final String text;
+  final TextStyle style;
+  final TextAlign textAlign;
+
+  const _ScaledIndopakText({
+    required this.text,
+    required this.style,
+    required this.textAlign,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final painter = _buildPainter(style, MediaQuery.textScalerOf(context))
+      ..layout();
+
+    return SizedBox(
+      width: painter.width / _renderScale,
+      height: painter.height / _renderScale,
+      child: CustomPaint(
+        painter: _ScaledIndopakTextPainter(
+          text: text,
+          style: style,
+          textAlign: textAlign,
+          textScaler: MediaQuery.textScalerOf(context),
+        ),
+      ),
+    );
+  }
+
+  TextPainter _buildPainter(TextStyle baseStyle, TextScaler textScaler) {
+    final highResStyle = baseStyle.copyWith(
+      fontSize: (baseStyle.fontSize ?? 14) * _renderScale,
+      wordSpacing: (baseStyle.wordSpacing ?? 0) * _renderScale,
+      letterSpacing:
+          baseStyle.letterSpacing == null
+              ? null
+              : baseStyle.letterSpacing! * _renderScale,
+    );
+
+    return TextPainter(
+      text: TextSpan(text: text, style: highResStyle),
+      textDirection: TextDirection.rtl,
+      textAlign: textAlign,
+      maxLines: 1,
+      textScaler: textScaler,
+    );
+  }
+}
+
+class _ScaledIndopakTextPainter extends CustomPainter {
+  final String text;
+  final TextStyle style;
+  final TextAlign textAlign;
+  final TextScaler textScaler;
+
+  const _ScaledIndopakTextPainter({
+    required this.text,
+    required this.style,
+    required this.textAlign,
+    required this.textScaler,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const renderScale = _ScaledIndopakText._renderScale;
+    final highResStyle = style.copyWith(
+      fontSize: (style.fontSize ?? 14) * renderScale,
+      wordSpacing: (style.wordSpacing ?? 0) * renderScale,
+      letterSpacing:
+          style.letterSpacing == null
+              ? null
+              : style.letterSpacing! * renderScale,
+    );
+
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: highResStyle),
+      textDirection: TextDirection.rtl,
+      textAlign: textAlign,
+      maxLines: 1,
+      textScaler: textScaler,
+    )..layout();
+
+    canvas.save();
+    canvas.scale(1 / renderScale, 1 / renderScale);
+    painter.paint(canvas, Offset.zero);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScaledIndopakTextPainter oldDelegate) {
+    return oldDelegate.text != text ||
+        oldDelegate.style != style ||
+        oldDelegate.textAlign != textAlign ||
+        oldDelegate.textScaler != textScaler;
   }
 }

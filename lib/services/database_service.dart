@@ -10,15 +10,6 @@ import '../models/page_data.dart';
 import '../models/word_model.dart';
 
 class DatabaseService {
-  static const int _lamCodePoint = 0x0644;
-  static const Set<int> _alefCodePoints = {
-    0x0622,
-    0x0623,
-    0x0625,
-    0x0627,
-    0x0671,
-  };
-
   static DatabaseService? _instance;
   Database? _qpcDb;
   Database? _layoutDb;
@@ -188,8 +179,6 @@ class DatabaseService {
     final ayah = row['ayah'] as int;
     final wordPos = row['word'] as int;
     final rawText = row['text'] as String;
-    final glyphText =
-        mushafType.usesIndopakFont ? _normalizeIndopakText(rawText) : rawText;
     final location = row['location'] as String? ?? '$surah:$ayah:$wordPos';
     // location is "surah:ayah:word", verseKey is "surah:ayah"
     final parts = location.split(':');
@@ -198,8 +187,8 @@ class DatabaseService {
     return WordModel(
       id: id,
       position: wordPos,
-      text: glyphText,
-      codeV2: glyphText,
+      text: rawText,
+      codeV2: rawText,
       verseKey: verseKey,
       surahNumber: surah,
       ayahNumber: ayah,
@@ -207,46 +196,5 @@ class DatabaseService {
       lineNumber: lineNumber,
       charTypeName: 'word',
     );
-  }
-
-  String _normalizeIndopakText(String text) {
-    final codePoints = text.runes.toList(growable: false);
-    if (codePoints.length < 3) {
-      return text;
-    }
-
-    final normalized = <int>[];
-    for (var index = 0; index < codePoints.length; index++) {
-      final codePoint = codePoints[index];
-      if (codePoint != _lamCodePoint) {
-        normalized.add(codePoint);
-        continue;
-      }
-
-      final marks = <int>[];
-      var probe = index + 1;
-      while (probe < codePoints.length && _isArabicMark(codePoints[probe])) {
-        marks.add(codePoints[probe]);
-        probe += 1;
-      }
-
-      if (marks.isEmpty ||
-          probe >= codePoints.length ||
-          !_alefCodePoints.contains(codePoints[probe])) {
-        normalized.add(codePoint);
-        continue;
-      }
-
-      normalized.add(_lamCodePoint);
-      normalized.add(codePoints[probe]);
-      normalized.addAll(marks);
-      index = probe;
-    }
-
-    return String.fromCharCodes(normalized);
-  }
-
-  bool _isArabicMark(int codePoint) {
-    return (codePoint >= 0x064B && codePoint <= 0x065F) || codePoint == 0x0670;
   }
 }

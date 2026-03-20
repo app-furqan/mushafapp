@@ -28,6 +28,8 @@ flutter:
     - assets/fonts/v4/
     - assets/fonts/indopak.ttf
     - assets/fonts/KFGQPCNastaleeq-Regular.ttf
+    - assets/fonts/DigitalKhattIndoPak.otf
+    - assets/fonts/Nastaleeq.ttf
     - assets/data/
 
   fonts:
