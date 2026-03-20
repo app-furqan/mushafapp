@@ -1,27 +1,60 @@
 import 'package:flutter/services.dart';
 
+import '../models/indopak_font_choice.dart';
+
 class FontService {
   static const int _totalPages = 604;
   static const String uthmanicHafsFamily = 'UthmanicHafs';
   static const String indopakFontFamily = 'IndopakNastaleeq';
+  static const String kfgqpcNastaleeqFontFamily = 'KFGQPCNastaleeq';
   static final Set<int> _loadedPages = <int>{};
   static final Map<int, Future<void>> _loadingPages = <int, Future<void>>{};
 
-  static bool _indopakLoaded = false;
-  static Future<void>? _indopakFuture;
+  static final Set<IndopakFontChoice> _loadedIndopakFonts =
+      <IndopakFontChoice>{};
+  static final Map<IndopakFontChoice, Future<void>> _loadingIndopakFonts =
+      <IndopakFontChoice, Future<void>>{};
 
-  static Future<void> ensureIndopakFontLoaded() {
-    if (_indopakLoaded) return Future.value();
-    return _indopakFuture ??= _loadIndopakFont();
+  static Future<void> ensureIndopakFontLoaded([
+    IndopakFontChoice choice = IndopakFontChoice.indopak,
+  ]) {
+    if (_loadedIndopakFonts.contains(choice)) {
+      return Future.value();
+    }
+    final inFlight = _loadingIndopakFonts[choice];
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final future = _loadIndopakFont(choice);
+    _loadingIndopakFonts[choice] = future;
+    return future.whenComplete(() {
+      _loadingIndopakFonts.remove(choice);
+      _loadedIndopakFonts.add(choice);
+    });
   }
 
-  static Future<void> _loadIndopakFont() async {
-    final byteData = await rootBundle.load('assets/fonts/indopak.ttf');
-    final loader = FontLoader(indopakFontFamily);
+  static Future<void> _loadIndopakFont(IndopakFontChoice choice) async {
+    final assetPath = switch (choice) {
+      IndopakFontChoice.indopak => 'assets/fonts/indopak.ttf',
+      IndopakFontChoice.kfgqpcNastaleeq =>
+        'assets/fonts/KFGQPCNastaleeq-Regular.ttf',
+    };
+    final byteData = await rootBundle.load(assetPath);
+    final loader = FontLoader(fontFamilyForIndopakChoice(choice));
     loader.addFont(Future.value(byteData));
     await loader.load();
-    _indopakLoaded = true;
-    _indopakFuture = null;
+  }
+
+  static String fontFamilyForIndopakChoice(IndopakFontChoice choice) {
+    return switch (choice) {
+      IndopakFontChoice.indopak => indopakFontFamily,
+      IndopakFontChoice.kfgqpcNastaleeq => kfgqpcNastaleeqFontFamily,
+    };
+  }
+
+  static bool isIndopakFontFamily(String fontFamily) {
+    return fontFamily == indopakFontFamily ||
+        fontFamily == kfgqpcNastaleeqFontFamily;
   }
 
   /// Returns the font family name for a given page.

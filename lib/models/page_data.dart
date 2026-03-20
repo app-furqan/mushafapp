@@ -36,6 +36,9 @@ class LineData {
   String get fallbackText => words.map((word) => word.text).join(' ');
 
   String get glyphText => words.map((word) => word.glyphText).join();
+
+  String get glyphTextWithSpaces =>
+      words.map((word) => word.glyphText).join(' ');
 }
 
 class PageData {

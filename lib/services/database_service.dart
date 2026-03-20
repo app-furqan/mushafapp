@@ -23,6 +23,7 @@ class DatabaseService {
   Database? _qpcDb;
   Database? _layoutDb;
   Database? _indopakLayoutDb;
+  Database? _tajIndopakLayoutDb;
   Database? _indopakWordsDb;
   DatabaseService._();
 
@@ -53,6 +54,15 @@ class DatabaseService {
     );
   }
 
+  Future<void> _initializeTajIndopak16() async {
+    if (_tajIndopakLayoutDb != null) return;
+    await _initializeIndopak();
+    _tajIndopakLayoutDb = await _openAssetDb(
+      'assets/data/taj-indopak-16-lines.db',
+      'taj-indopak-16-lines.db',
+    );
+  }
+
   Future<Database> _openAssetDb(String assetPath, String fileName) async {
     final dir = await getApplicationSupportDirectory();
     final dbFile = File(p.join(dir.path, fileName));
@@ -77,12 +87,16 @@ class DatabaseService {
     MushafType mushafType = MushafType.hafs,
   ]) async {
     final Database activeLayoutDb;
-    if (mushafType == MushafType.indopak) {
-      await _initializeIndopak();
-      activeLayoutDb = _indopakLayoutDb!;
-    } else {
-      await initialize();
-      activeLayoutDb = _layoutDb!;
+    switch (mushafType) {
+      case MushafType.hafs:
+        await initialize();
+        activeLayoutDb = _layoutDb!;
+      case MushafType.indopak:
+        await _initializeIndopak();
+        activeLayoutDb = _indopakLayoutDb!;
+      case MushafType.tajIndopak16:
+        await _initializeTajIndopak16();
+        activeLayoutDb = _tajIndopakLayoutDb!;
     }
 
     // 1. Fetch layout lines from layout DB
@@ -100,7 +114,7 @@ class DatabaseService {
     // 2. For each ayah line, bulk-fetch words from appropriate words DB
     // Collect all needed word ID ranges first to do fewer queries
     final Database activeWordsDb =
-        mushafType == MushafType.indopak ? _indopakWordsDb! : _qpcDb!;
+        mushafType.usesIndopakFont ? _indopakWordsDb! : _qpcDb!;
     final List<LineData> lines = [];
     for (final row in layoutRows) {
       final lineNumber = row['line_number'] as int;
@@ -175,9 +189,7 @@ class DatabaseService {
     final wordPos = row['word'] as int;
     final rawText = row['text'] as String;
     final glyphText =
-        mushafType == MushafType.indopak
-            ? _normalizeIndopakText(rawText)
-            : rawText;
+        mushafType.usesIndopakFont ? _normalizeIndopakText(rawText) : rawText;
     final location = row['location'] as String? ?? '$surah:$ayah:$wordPos';
     // location is "surah:ayah:word", verseKey is "surah:ayah"
     final parts = location.split(':');

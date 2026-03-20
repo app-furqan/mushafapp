@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/chapter_model.dart';
+import '../models/indopak_font_choice.dart';
 import '../models/mushaf_display_mode.dart';
 import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
@@ -14,6 +15,7 @@ class MushafPageWidget extends StatelessWidget {
   final MushafDisplayMode displayMode;
   final bool showTajweed;
   final MushafType mushafType;
+  final IndopakFontChoice indopakFontChoice;
 
   const MushafPageWidget({
     super.key,
@@ -24,6 +26,7 @@ class MushafPageWidget extends StatelessWidget {
     required this.displayMode,
     this.showTajweed = true,
     this.mushafType = MushafType.hafs,
+    this.indopakFontChoice = IndopakFontChoice.indopak,
   });
 
   @override
@@ -74,6 +77,7 @@ class MushafPageWidget extends StatelessWidget {
                             showTajweed: showTajweed,
                             displayMode: displayMode,
                             mushafType: mushafType,
+                            indopakFontChoice: indopakFontChoice,
                           ),
                 ),
               ),
@@ -124,6 +128,7 @@ class _PageLines extends StatelessWidget {
   final bool showTajweed;
   final MushafDisplayMode displayMode;
   final MushafType mushafType;
+  final IndopakFontChoice indopakFontChoice;
 
   const _PageLines({
     required this.pageNumber,
@@ -135,14 +140,15 @@ class _PageLines extends StatelessWidget {
     required this.showTajweed,
     required this.displayMode,
     required this.mushafType,
+    required this.indopakFontChoice,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = displayMode.brightness == Brightness.dark;
     final String fontFamily;
-    if (mushafType == MushafType.indopak) {
-      fontFamily = FontService.indopakFontFamily;
+    if (mushafType.usesIndopakFont) {
+      fontFamily = FontService.fontFamilyForIndopakChoice(indopakFontChoice);
     } else {
       fontFamily = FontService.fontFamilyForPage(
         pageNumber,
@@ -171,7 +177,7 @@ class _PageLines extends StatelessWidget {
         for (final lineData in lineSlots)
           Flexible(
             flex:
-                mushafType == MushafType.indopak
+                mushafType.usesIndopakFont
                     ? _indopakLineFlex(lineData)
                     : _hafsLineFlex(lineData, useCenteredProfile),
             child: _buildLineSlot(lineData, fontFamily),
@@ -182,7 +188,7 @@ class _PageLines extends StatelessWidget {
 
   Widget _buildLineSlot(LineData? lineData, String fontFamily) {
     final line = _buildLine(lineData, fontFamily);
-    if (mushafType != MushafType.indopak || lineData == null) {
+    if (!mushafType.usesIndopakFont || lineData == null) {
       return line;
     }
 
@@ -205,8 +211,9 @@ class _PageLines extends StatelessWidget {
 
     return switch (lineData.lineType) {
       PageLineType.surahName =>
-        mushafType == MushafType.indopak
+        mushafType.usesIndopakFont
             ? _SurahNameTextBox(
+              fontFamily: fontFamily,
               textColor: textColor,
               borderColor: borderColor,
               surahNumber: lineData.surahNumber ?? 1,
@@ -231,7 +238,7 @@ class _PageLines extends StatelessWidget {
     };
   }
 
-  // IndoPak: keep the same 15-slot grid visible on every page, including the
+  // IndoPak editions: keep the page's full printed grid visible, including
   // introductory pages where the final slots are intentionally blank.
   int _indopakLineFlex(LineData? lineData) {
     if (lineData == null) {
@@ -383,12 +390,14 @@ class _SurahNameBox extends StatelessWidget {
 /// Uses the Arabic surah name from chapter metadata instead of the QCF4Surah
 /// glyph font, because the IndoPak edition does not use per-page QCF4 fonts.
 class _SurahNameTextBox extends StatelessWidget {
+  final String fontFamily;
   final Color textColor;
   final Color borderColor;
   final int surahNumber;
   final Map<int, ChapterModel> chaptersById;
 
   const _SurahNameTextBox({
+    required this.fontFamily,
     required this.textColor,
     required this.borderColor,
     required this.surahNumber,
@@ -427,7 +436,7 @@ class _SurahNameTextBox extends StatelessWidget {
                 name,
                 textDirection: TextDirection.rtl,
                 style: TextStyle(
-                  fontFamily: FontService.indopakFontFamily,
+                  fontFamily: fontFamily,
                   fontSize: 26,
                   color: textColor,
                   height: 1.2,
@@ -451,7 +460,7 @@ class _BismillahLine extends StatelessWidget {
   static const _bismillah = 'بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ';
   static const _bismillahHafs = '\uFDFD';
 
-  bool get _isIndopak => fontFamily == FontService.indopakFontFamily;
+  bool get _isIndopak => FontService.isIndopakFontFamily(fontFamily);
 
   @override
   Widget build(BuildContext context) {
@@ -502,7 +511,7 @@ class _LineContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isIndopak = fontFamily == FontService.indopakFontFamily;
+    final isIndopak = FontService.isIndopakFontFamily(fontFamily);
     final lineAlignment =
         isIndopak
             ? Alignment.center
@@ -525,9 +534,7 @@ class _LineContent extends StatelessWidget {
             overflow: TextOverflow.clip,
             style: TextStyle(
               fontFamily:
-                  isIndopak
-                      ? FontService.indopakFontFamily
-                      : FontService.uthmanicHafsFamily,
+                  isIndopak ? fontFamily : FontService.uthmanicHafsFamily,
               fontFamilyFallback:
                   isIndopak ? null : const [FontService.uthmanicHafsFamily],
               fontSize: isIndopak ? 22.5 : 21,
@@ -541,7 +548,6 @@ class _LineContent extends StatelessWidget {
 
     final layoutResult = LayoutBuilder(
       builder: (context, constraints) {
-        // Measure all words at a stable base size first.
         final baseSize = isIndopak ? 22.5 : 25.5;
         final lineHeight = isIndopak ? 1.0 : 1.08;
         final baseStyle = TextStyle(
@@ -558,9 +564,72 @@ class _LineContent extends StatelessWidget {
           ],
         );
 
+        if (isIndopak) {
+          final lineGlyphText = lineData.glyphTextWithSpaces;
+          final gapCount =
+              lineData.words.length > 1 ? lineData.words.length - 1 : 0;
+          final contentWidth = _measureTextWidth(
+            context,
+            lineGlyphText,
+            baseStyle,
+          );
+          final availableWidth =
+              constraints.maxWidth.isFinite
+                  ? constraints.maxWidth
+                  : contentWidth;
+
+          final double fontSize;
+          final double wordSpacing;
+          if (lineData.isCentered || contentWidth < 1 || gapCount == 0) {
+            fontSize = baseSize;
+            wordSpacing = 0;
+          } else {
+            final preferredSpacing =
+                ((availableWidth - contentWidth) / gapCount).clamp(0.0, 10.0);
+            final widthWithPreferredSpacing =
+                contentWidth + preferredSpacing * gapCount;
+
+            if (widthWithPreferredSpacing <= availableWidth) {
+              fontSize = baseSize;
+              wordSpacing = preferredSpacing;
+            } else {
+              final scaleFactor = availableWidth / contentWidth;
+              fontSize = (baseSize * scaleFactor).clamp(
+                baseSize * 0.82,
+                baseSize * 1.06,
+              );
+              wordSpacing = 0;
+            }
+          }
+
+          final style = baseStyle.copyWith(
+            fontSize: fontSize,
+            wordSpacing: wordSpacing,
+          );
+
+          return Align(
+            alignment: lineAlignment,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: lineAlignment,
+              child: Semantics(
+                label: lineData.fallbackText,
+                child: ExcludeSemantics(
+                  child: Text(
+                    lineGlyphText,
+                    textDirection: TextDirection.rtl,
+                    textAlign: lineTextAlign,
+                    style: style,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
         final wordWidths = [
           for (final word in lineData.words)
-            _measureWordWidth(context, word.glyphText, baseStyle),
+            _measureTextWidth(context, word.glyphText, baseStyle),
         ];
         final contentWidth = wordWidths.fold<double>(
           0,
@@ -663,7 +732,7 @@ class _LineContent extends StatelessWidget {
     return layoutResult;
   }
 
-  double _measureWordWidth(BuildContext context, String text, TextStyle style) {
+  double _measureTextWidth(BuildContext context, String text, TextStyle style) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.rtl,

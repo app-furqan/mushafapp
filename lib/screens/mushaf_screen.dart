@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chapter_model.dart';
+import '../models/indopak_font_choice.dart';
 import '../models/mushaf_display_mode.dart';
 import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
@@ -18,6 +20,8 @@ class MushafScreen extends StatefulWidget {
 
 class _MushafScreenState extends State<MushafScreen> {
   static const int _initialPage = 1;
+  static const String _mushafTypePrefsKey = 'selected_mushaf_type';
+  static const String _indopakFontPrefsKey = 'selected_indopak_font';
 
   late final PageController _pageController;
   final _apiService = QuranApiService();
@@ -35,6 +39,7 @@ class _MushafScreenState extends State<MushafScreen> {
   MushafDisplayMode _displayMode = MushafDisplayMode.light;
   bool _tajweedEnabled = true;
   MushafType _mushafType = MushafType.hafs;
+  IndopakFontChoice _indopakFontChoice = IndopakFontChoice.indopak;
   final _zoomNotifier = ValueNotifier<double>(1.0);
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final TextEditingController _pageInputController;
@@ -49,6 +54,32 @@ class _MushafScreenState extends State<MushafScreen> {
     _pageInputController = TextEditingController(text: '$_initialPage');
     _pageInputFocusNode = FocusNode();
     _loadChapterMetadata();
+    _restorePreferences();
+  }
+
+  Future<void> _restorePreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedMushafType = prefs.getString(_mushafTypePrefsKey);
+    final storedIndopakFont = prefs.getString(_indopakFontPrefsKey);
+
+    final mushafType = MushafType.values.cast<MushafType?>().firstWhere(
+      (type) => type?.name == storedMushafType,
+      orElse: () => null,
+    );
+    final indopakFontChoice = IndopakFontChoice.values
+        .cast<IndopakFontChoice?>()
+        .firstWhere(
+          (choice) => choice?.name == storedIndopakFont,
+          orElse: () => null,
+        );
+
+    if (!mounted) return;
+
+    setState(() {
+      _mushafType = mushafType ?? MushafType.hafs;
+      _indopakFontChoice = indopakFontChoice ?? IndopakFontChoice.indopak;
+    });
+
     _loadPageData(_initialPage);
     _loadPageData(_initialPage + 1);
     _loadPageFont(_initialPage);
@@ -116,9 +147,9 @@ class _MushafScreenState extends State<MushafScreen> {
     if (_fontFutures.containsKey(pageNumber)) return;
 
     final Future<void> fontFuture;
-    if (_mushafType == MushafType.indopak) {
+    if (_mushafType.usesIndopakFont) {
       // Single font for the whole IndoPak mushaf — key 0 signals it's loaded.
-      fontFuture = FontService.ensureIndopakFontLoaded();
+      fontFuture = FontService.ensureIndopakFontLoaded(_indopakFontChoice);
     } else {
       fontFuture = FontService.ensureFontLoaded(pageNumber);
     }
@@ -138,7 +169,7 @@ class _MushafScreenState extends State<MushafScreen> {
     _fontFutures[pageNumber] = future;
   }
 
-  void _switchMushafType(MushafType type) {
+  Future<void> _switchMushafType(MushafType type) async {
     if (_mushafType == type) return;
     setState(() {
       _mushafType = type;
@@ -150,11 +181,30 @@ class _MushafScreenState extends State<MushafScreen> {
       _pageInputController.text = '1';
       if (!type.hasTajweed) _showLegend = false;
     });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mushafTypePrefsKey, type.name);
     _pageController.jumpToPage(0);
     _loadPageData(1);
     _loadPageData(2);
     _loadPageFont(1);
     _loadPageFont(2);
+  }
+
+  Future<void> _switchIndopakFontChoice(IndopakFontChoice choice) async {
+    if (_indopakFontChoice == choice) return;
+
+    setState(() {
+      _indopakFontChoice = choice;
+      _fontReady.clear();
+      _fontFutures.clear();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_indopakFontPrefsKey, choice.name);
+
+    for (final page in [_currentPage - 1, _currentPage, _currentPage + 1]) {
+      _loadPageFont(page);
+    }
   }
 
   void _onPageChanged(int index) {
@@ -223,6 +273,7 @@ class _MushafScreenState extends State<MushafScreen> {
                           displayMode: _displayMode,
                           showTajweed: _tajweedEnabled,
                           mushafType: _mushafType,
+                          indopakFontChoice: _indopakFontChoice,
                         ),
                       ),
                     ),
@@ -531,6 +582,36 @@ class _MushafScreenState extends State<MushafScreen> {
                               .toList(),
                     ),
                   ),
+                  if (_mushafType.usesIndopakFont) ...[
+                    Divider(height: 1, thickness: 0.5, color: dividerColor),
+                    const SizedBox(height: 4),
+                    _DrawerSectionLabel(
+                      text: 'IndoPak Font',
+                      color: subtitleColor,
+                    ),
+                    RadioGroup<IndopakFontChoice>(
+                      groupValue: _indopakFontChoice,
+                      onChanged: (choice) => _switchIndopakFontChoice(choice!),
+                      child: Column(
+                        children:
+                            IndopakFontChoice.values
+                                .map(
+                                  (choice) => RadioListTile<IndopakFontChoice>(
+                                    title: Text(
+                                      choice.label,
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    value: choice,
+                                    dense: true,
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                    ),
+                  ],
                   if (_mushafType.hasTajweed) ...[
                     Divider(height: 1, thickness: 0.5, color: dividerColor),
                     const SizedBox(height: 4),
