@@ -38,4 +38,4 @@ flutter:
         - asset: assets/fonts/QCF4_QBSML.ttf
     - family: UthmanicHafs
       fonts:
-        - asset: assets/fonts/uthmanic_hafs_v20.ttf
+        - asset: assets/fonts/uthmanic_hafs_v22.ttf
