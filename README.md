@@ -29,6 +29,15 @@ The QPC v4 system ships **604 per-page OpenType fonts** — one font per mushaf 
 | 9 | `#F40000` | Madd lāzim |
 | 10–12 | decorative | Ayah-number ornament colours |
 
+### Local font adjustments
+
+The app now ships two Madinah page-font sets:
+
+- `assets/fonts/v4/` contains the locally edited page fonts used by default in the app.
+- `assets/fonts/v4_original/` contains a clean downloaded copy of the original page fonts.
+
+The edited page-font set includes a targeted spacing fix for the hizb-quarter opening glyph on affected pages. This was necessary because the original page fonts allowed the hizb-quarter marker to collide with the following word on some pages. The local edits widen the relevant page-font glyph advances so the hizb quarters no longer touch the following text during rendering.
+
 ### Companion fonts
 
 | Font | Purpose |
