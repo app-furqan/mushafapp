@@ -26,6 +26,7 @@ flutter:
 
   assets:
     - assets/fonts/v4/
+    - assets/fonts/v4_original/
     - assets/fonts/indopak.ttf
     - assets/fonts/KFGQPCNastaleeq-Regular.ttf
     - assets/fonts/DigitalKhattIndoPak.otf

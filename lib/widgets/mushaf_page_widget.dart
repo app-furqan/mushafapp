@@ -5,6 +5,7 @@ import '../models/indopak_font_choice.dart';
 import '../models/mushaf_display_mode.dart';
 import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
+import '../models/page_font_source.dart';
 import '../services/font_service.dart';
 
 class MushafPageWidget extends StatelessWidget {
@@ -16,6 +17,7 @@ class MushafPageWidget extends StatelessWidget {
   final bool showTajweed;
   final MushafType mushafType;
   final IndopakFontChoice indopakFontChoice;
+  final PageFontSource pageFontSource;
 
   const MushafPageWidget({
     super.key,
@@ -27,6 +29,7 @@ class MushafPageWidget extends StatelessWidget {
     this.showTajweed = true,
     this.mushafType = MushafType.hafs,
     this.indopakFontChoice = IndopakFontChoice.indopak,
+    this.pageFontSource = PageFontSource.edited,
   });
 
   @override
@@ -78,6 +81,7 @@ class MushafPageWidget extends StatelessWidget {
                             displayMode: displayMode,
                             mushafType: mushafType,
                             indopakFontChoice: indopakFontChoice,
+                            pageFontSource: pageFontSource,
                           ),
                 ),
               ),
@@ -129,6 +133,7 @@ class _PageLines extends StatelessWidget {
   final MushafDisplayMode displayMode;
   final MushafType mushafType;
   final IndopakFontChoice indopakFontChoice;
+  final PageFontSource pageFontSource;
 
   const _PageLines({
     required this.pageNumber,
@@ -141,6 +146,7 @@ class _PageLines extends StatelessWidget {
     required this.displayMode,
     required this.mushafType,
     required this.indopakFontChoice,
+    required this.pageFontSource,
   });
 
   @override
@@ -154,6 +160,7 @@ class _PageLines extends StatelessWidget {
         pageNumber,
         dark: isDark,
         flat: !showTajweed,
+        source: pageFontSource,
       );
     }
 

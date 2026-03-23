@@ -6,6 +6,7 @@ import '../models/indopak_font_choice.dart';
 import '../models/mushaf_display_mode.dart';
 import '../models/mushaf_type.dart';
 import '../models/page_data.dart';
+import '../models/page_font_source.dart';
 import '../services/chapter_service.dart';
 import '../services/font_service.dart';
 import '../services/quran_api_service.dart';
@@ -22,6 +23,7 @@ class _MushafScreenState extends State<MushafScreen> {
   static const int _initialPage = 1;
   static const String _mushafTypePrefsKey = 'selected_mushaf_type';
   static const String _indopakFontPrefsKey = 'selected_indopak_font';
+  static const String _pageFontSourcePrefsKey = 'selected_page_font_source';
 
   late final PageController _pageController;
   final _apiService = QuranApiService();
@@ -40,6 +42,7 @@ class _MushafScreenState extends State<MushafScreen> {
   bool _tajweedEnabled = true;
   MushafType _mushafType = MushafType.hafs;
   IndopakFontChoice _indopakFontChoice = IndopakFontChoice.indopak;
+  PageFontSource _pageFontSource = PageFontSource.edited;
   final _zoomNotifier = ValueNotifier<double>(1.0);
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final TextEditingController _pageInputController;
@@ -61,6 +64,7 @@ class _MushafScreenState extends State<MushafScreen> {
     final prefs = await SharedPreferences.getInstance();
     final storedMushafType = prefs.getString(_mushafTypePrefsKey);
     final storedIndopakFont = prefs.getString(_indopakFontPrefsKey);
+    final storedPageFontSource = prefs.getString(_pageFontSourcePrefsKey);
 
     final mushafType = MushafType.values.cast<MushafType?>().firstWhere(
       (type) => type?.name == storedMushafType,
@@ -72,12 +76,19 @@ class _MushafScreenState extends State<MushafScreen> {
           (choice) => choice?.name == storedIndopakFont,
           orElse: () => null,
         );
+    final pageFontSource = PageFontSource.values
+        .cast<PageFontSource?>()
+        .firstWhere(
+          (source) => source?.name == storedPageFontSource,
+          orElse: () => null,
+        );
 
     if (!mounted) return;
 
     setState(() {
       _mushafType = mushafType ?? MushafType.hafs;
       _indopakFontChoice = indopakFontChoice ?? IndopakFontChoice.indopak;
+      _pageFontSource = pageFontSource ?? PageFontSource.edited;
     });
 
     _loadPageData(_initialPage);
@@ -151,7 +162,10 @@ class _MushafScreenState extends State<MushafScreen> {
       // Single font for the whole IndoPak mushaf — key 0 signals it's loaded.
       fontFuture = FontService.ensureIndopakFontLoaded(_indopakFontChoice);
     } else {
-      fontFuture = FontService.ensureFontLoaded(pageNumber);
+      fontFuture = FontService.ensureFontLoaded(
+        pageNumber,
+        source: _pageFontSource,
+      );
     }
 
     final future = fontFuture
@@ -207,6 +221,23 @@ class _MushafScreenState extends State<MushafScreen> {
     }
   }
 
+  Future<void> _switchPageFontSource(PageFontSource source) async {
+    if (_pageFontSource == source) return;
+
+    setState(() {
+      _pageFontSource = source;
+      _fontReady.clear();
+      _fontFutures.clear();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pageFontSourcePrefsKey, source.name);
+
+    for (final page in [_currentPage - 1, _currentPage, _currentPage + 1]) {
+      _loadPageFont(page);
+    }
+  }
+
   void _onPageChanged(int index) {
     final pageNumber = index + 1;
     _zoomNotifier.value = 1.0;
@@ -220,7 +251,7 @@ class _MushafScreenState extends State<MushafScreen> {
       _loadPageFont(p);
     }
     if (_mushafType == MushafType.hafs) {
-      FontService.prefetchAdjacent(pageNumber);
+      FontService.prefetchAdjacent(pageNumber, source: _pageFontSource);
     }
   }
 
@@ -274,6 +305,7 @@ class _MushafScreenState extends State<MushafScreen> {
                           showTajweed: _tajweedEnabled,
                           mushafType: _mushafType,
                           indopakFontChoice: _indopakFontChoice,
+                          pageFontSource: _pageFontSource,
                         ),
                       ),
                     ),
@@ -582,6 +614,36 @@ class _MushafScreenState extends State<MushafScreen> {
                               .toList(),
                     ),
                   ),
+                  if (_mushafType == MushafType.hafs) ...[
+                    Divider(height: 1, thickness: 0.5, color: dividerColor),
+                    const SizedBox(height: 4),
+                    _DrawerSectionLabel(
+                      text: 'Madina Page Fonts',
+                      color: subtitleColor,
+                    ),
+                    RadioGroup<PageFontSource>(
+                      groupValue: _pageFontSource,
+                      onChanged: (source) => _switchPageFontSource(source!),
+                      child: Column(
+                        children:
+                            PageFontSource.values
+                                .map(
+                                  (source) => RadioListTile<PageFontSource>(
+                                    title: Text(
+                                      source.label,
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    value: source,
+                                    dense: true,
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                    ),
+                  ],
                   if (_mushafType.usesIndopakFont) ...[
                     Divider(height: 1, thickness: 0.5, color: dividerColor),
                     const SizedBox(height: 4),

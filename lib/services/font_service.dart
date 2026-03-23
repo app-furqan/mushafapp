@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import '../models/indopak_font_choice.dart';
+import '../models/page_font_source.dart';
 
 class FontService {
   static const int _totalPages = 604;
@@ -9,8 +10,9 @@ class FontService {
   static const String kfgqpcNastaleeqFontFamily = 'KFGQPCNastaleeq';
   static const String digitalKhattIndoPakFontFamily = 'DigitalKhattIndoPak';
   static const String nastaleeqFontFamily = 'Nastaleeq';
-  static final Set<int> _loadedPages = <int>{};
-  static final Map<int, Future<void>> _loadingPages = <int, Future<void>>{};
+  static final Set<String> _loadedPages = <String>{};
+  static final Map<String, Future<void>> _loadingPages =
+      <String, Future<void>>{};
 
   static final Set<IndopakFontChoice> _loadedIndopakFonts =
       <IndopakFontChoice>{};
@@ -76,58 +78,85 @@ class FontService {
     int pageNumber, {
     bool dark = false,
     bool flat = false,
+    PageFontSource source = PageFontSource.edited,
   }) {
     final n = pageNumber.clamp(1, _totalPages);
-    if (flat) return dark ? 'QCF4V4FlatDkP$n' : 'QCF4V4FlatP$n';
-    return dark ? 'QCF4V4DarkPage$n' : 'QCF4V4Page$n';
+    final prefix = 'QCF4V4${source.familyKey}';
+    if (flat) return dark ? '${prefix}FlatDkP$n' : '${prefix}FlatP$n';
+    return dark ? '${prefix}DarkPage$n' : '${prefix}Page$n';
   }
 
   static const String surahFontFamily = 'QCF4Surah';
 
-  static bool isFontLoaded(int pageNumber) => _loadedPages.contains(pageNumber);
+  static String _pageKey(int pageNumber, PageFontSource source) {
+    return '${source.name}:$pageNumber';
+  }
 
-  static Future<void> ensureFontLoaded(int pageNumber) {
+  static bool isFontLoaded(
+    int pageNumber, {
+    PageFontSource source = PageFontSource.edited,
+  }) => _loadedPages.contains(_pageKey(pageNumber, source));
+
+  static Future<void> ensureFontLoaded(
+    int pageNumber, {
+    PageFontSource source = PageFontSource.edited,
+  }) {
     final normalized = pageNumber.clamp(1, _totalPages);
-    if (_loadedPages.contains(normalized)) {
+    final key = _pageKey(normalized, source);
+    if (_loadedPages.contains(key)) {
       return Future.value();
     }
-    final inFlight = _loadingPages[normalized];
+    final inFlight = _loadingPages[key];
     if (inFlight != null) {
       return inFlight;
     }
 
-    final future = _loadFromAssets(normalized);
-    _loadingPages[normalized] = future;
+    final future = _loadFromAssets(normalized, source: source);
+    _loadingPages[key] = future;
     return future.whenComplete(() {
-      _loadingPages.remove(normalized);
-      _loadedPages.add(normalized);
+      _loadingPages.remove(key);
+      _loadedPages.add(key);
     });
   }
 
-  static void prefetchAdjacent(int pageNumber) {
+  static void prefetchAdjacent(
+    int pageNumber, {
+    PageFontSource source = PageFontSource.edited,
+  }) {
     for (final candidate in <int>[pageNumber - 1, pageNumber + 1]) {
       if (candidate >= 1 && candidate <= _totalPages) {
-        ensureFontLoaded(candidate);
+        ensureFontLoaded(candidate, source: source);
       }
     }
   }
 
-  static Future<void> _loadFromAssets(int pageNumber) async {
-    final byteData = await rootBundle.load('assets/fonts/v4/p$pageNumber.ttf');
+  static Future<void> _loadFromAssets(
+    int pageNumber, {
+    required PageFontSource source,
+  }) async {
+    final byteData = await rootBundle.load(
+      '${source.assetDirectory}/p$pageNumber.ttf',
+    );
 
     // 1. Light variant — original (CPAL palette 0 = black ink + tajweed).
-    final lightLoader = FontLoader(fontFamilyForPage(pageNumber));
+    final lightLoader = FontLoader(
+      fontFamilyForPage(pageNumber, source: source),
+    );
     lightLoader.addFont(Future.value(byteData));
 
     // 2. Dark variant — palette 0↔1 swapped (white ink + dark tajweed).
     final darkData = _patchFont(byteData, swapPalettes: true);
-    final darkLoader = FontLoader(fontFamilyForPage(pageNumber, dark: true));
+    final darkLoader = FontLoader(
+      fontFamilyForPage(pageNumber, dark: true, source: source),
+    );
     darkLoader.addFont(Future.value(darkData));
 
     // 3. Flat-light — tajweed COLR layers → 0xFFFF (foreground colour),
     //    ayah ornament layers preserved.
     final flatData = _patchFont(byteData, flattenTajweed: true);
-    final flatLoader = FontLoader(fontFamilyForPage(pageNumber, flat: true));
+    final flatLoader = FontLoader(
+      fontFamilyForPage(pageNumber, flat: true, source: source),
+    );
     flatLoader.addFont(Future.value(flatData));
 
     // 4. Flat-dark — swap + flatten.
@@ -137,7 +166,7 @@ class FontService {
       flattenTajweed: true,
     );
     final flatDarkLoader = FontLoader(
-      fontFamilyForPage(pageNumber, dark: true, flat: true),
+      fontFamilyForPage(pageNumber, dark: true, flat: true, source: source),
     );
     flatDarkLoader.addFont(Future.value(flatDarkData));
 
